@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.6';
+  var VERSION = '1.0.8';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно

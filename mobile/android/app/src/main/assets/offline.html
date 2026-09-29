@@ -9,8 +9,9 @@
 <body><div class="box">
   <h1>Сервер CRM недоступен</h1>
   <p id="info"></p>
+  <p id="autoretry" style="color:#8a8fa3"></p>
   <button onclick="FanDevice.call('app.reload')">Повторить</button>
   <button class="sec" onclick="FanDevice.settings.open()">Настройки</button>
 </div>
-<script>var q=new URLSearchParams(location.search);document.getElementById('info').textContent=(q.get('url')||'')+(q.get('err')?' — '+q.get('err'):'');</script>
+<script>var q=new URLSearchParams(location.search);var left=10,el=document.getElementById('autoretry');(function t(){el.textContent='повторю через '+left+' с';if(left--<=0){FanDevice.call('app.reload');return;}setTimeout(t,1000);})();document.getElementById('info').textContent=(q.get('url')||'')+(q.get('err')?' — '+q.get('err'):'');</script>
 </body></html>

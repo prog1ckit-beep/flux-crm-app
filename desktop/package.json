@@ -1,13 +1,13 @@
 {
   "name": "fan-dvizhok-desktop",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "private": true,
   "description": "Flux CRM",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "selftest": "electron . --selftest",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win nsis"
   },
   "build": {
     "appId": "md.fan.dvizhok",
@@ -24,11 +24,28 @@
     ],
     "win": {
       "target": [
-        "portable"
+        "nsis"
       ],
       "icon": "build/icon.ico"
     },
-    "icon": "build/icon.ico"
+    "icon": "build/icon.ico",
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Flux CRM",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Flux CRM Setup ${version}.exe",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": [
+        "ru_RU"
+      ],
+      "language": "1049"
+    }
   },
   "devDependencies": {
     "electron": "^44.4.5",

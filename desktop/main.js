@@ -151,12 +151,17 @@ class CommandRouter {
     const rel = (await res.json()).message;
     const out = { current: VERSION, updating: false };
     if (!rel || !rel.url) return out;
-    const dir = process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('downloads');
-    const target = path.join(dir, `Flux CRM ${rel.version}.exe`);
+    // Скачиваем установщик (NSIS one-click) во временную папку, запускаем его и выходим: он обновит Flux CRM поверх
+    // текущей и сам запустит приложение (runAfterFinish).
+    const target = path.join(app.getPath('temp'), `Flux CRM Setup ${rel.version}.exe`);
     const file = await enet.fetch(rel.url);
     if (!file.ok) throw new CommandError('failed', 'загрузка: HTTP ' + file.status);
     fs.writeFileSync(target, Buffer.from(await file.arrayBuffer()));
-    setTimeout(() => { shell.openPath(target).then(() => { this.engine.quitting = true; app.quit(); }); }, 800);
+    setTimeout(() => {
+      const child = require('child_process').spawn(target, [], { detached: true, stdio: 'ignore' });
+      child.unref();
+      this.engine.quitting = true; app.quit();
+    }, 800);
     return Object.assign(out, { updating: true, version: rel.version, path: target });
   }
   keepAwake(on) {
@@ -261,6 +266,8 @@ class Engine {
     this.perms.installBluetooth(wc);
     wc.on('dom-ready', () => this.inject());
     wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => { if (isMainFrame && code !== -3) this.showOffline(url, desc); });
+    // 502/503 от туннеля или сервера — своя страница с автоповтором вместо страницы Cloudflare
+    wc.on('did-navigate', (e, url, httpCode) => { if (httpCode >= 500 && this.settings.isAllowedUrl(url)) this.showOffline(url, 'HTTP ' + httpCode); });
     wc.setWindowOpenHandler(({ url }) => { this.settings.isAllowedUrl(url) ? this.win.loadURL(url) : shell.openExternal(url); return { action: 'deny' }; });
     wc.on('will-navigate', (e, url) => { if (!this.settings.isAllowedUrl(url) && !url.startsWith('file://')) { e.preventDefault(); shell.openExternal(url); } });
     wc.on('page-title-updated', e => e.preventDefault());

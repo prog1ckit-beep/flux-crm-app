@@ -114,6 +114,11 @@ class MainActivity : AppCompatActivity(), Host {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 if (request.isForMainFrame) showOffline(request.url.toString(), error.description?.toString() ?: "")
             }
+            // 502/503 от туннеля или сервера (перезапуск стенда) — своя страница с автоповтором, а не страница Cloudflare
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: android.webkit.WebResourceResponse) {
+                if (request.isForMainFrame && response.statusCode >= 500 && settings.isAllowedUrl(request.url.toString()))
+                    showOffline(request.url.toString(), "HTTP ${response.statusCode}")
+            }
         }
         web.webChromeClient = object : WebChromeClient() {
             override fun onPermissionRequest(request: PermissionRequest) {
