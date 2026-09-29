@@ -17,9 +17,11 @@ android {
         applicationId = "md.fan.dvizhok"
         minSdk = 26
         targetSdk = 35
-        versionCode = 6
-        versionName = "1.0.5"
+        versionCode = 7
+        versionName = "1.0.6"
         buildConfigField("boolean", "HAS_FIREBASE", hasFirebase.toString())
+        // Адрес CRM по умолчанию вшивается при выпуске: gradlew assembleRelease -PserverUrl=https://… (publish-release.sh)
+        buildConfigField("String", "SERVER_URL", "\"${(project.findProperty("serverUrl") as String?)?.trim()?.trimEnd('/') ?: ""}\"")
     }
     // Постоянный ключ подписи (mobile/android/keystore.properties, вне git; копия в секретах Hub2) — обновления ставятся
     // поверх друг друга только при одном ключе. Без файла — debug-ключ (только для локальной отладки).

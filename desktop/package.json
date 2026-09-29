@@ -1,8 +1,8 @@
 {
   "name": "fan-dvizhok-desktop",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "private": true,
-  "description": "ФАН движок для Windows (Electron): CRM с сервера + FanDevice",
+  "description": "Flux CRM",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

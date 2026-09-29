@@ -8,8 +8,10 @@ import java.util.UUID
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("fan-dvizhok", Context.MODE_PRIVATE)
 
+    /** Адрес сервера: сохранённый пользователем, иначе вшитый при выпуске (BuildConfig.SERVER_URL — publish-release.sh
+     *  передаёт текущий адрес CRM), чтобы приложение со страницы «Установить» открывало CRM сразу, без экрана настроек. */
     var serverUrl: String
-        get() = prefs.getString("serverUrl", "")!!.trim().trimEnd('/')
+        get() = (prefs.getString("serverUrl", null)?.takeIf { it.isNotBlank() } ?: BuildConfig.SERVER_URL).trim().trimEnd('/')
         set(v) = prefs.edit().putString("serverUrl", v.trim().trimEnd('/')).apply()
 
     var allowHosts: String

@@ -1,7 +1,7 @@
 'use strict';
 /* ФАН движок для Windows (Electron). Всё содержимое — с сервера CRM; здесь только окно, разрешения,
  * нативные команды FanDevice (docs/SPEC-FANDEVICE-v1.md), трей, настройки. Код в ООП. */
-const { app, BrowserWindow, session, ipcMain, Notification, clipboard, shell, powerSaveBlocker, Tray, Menu, nativeImage, net } = require('electron');
+const { app, BrowserWindow, session, ipcMain, Notification, clipboard, shell, powerSaveBlocker, Tray, Menu, nativeImage, net: enet } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
@@ -20,7 +20,13 @@ class Settings {
   }
   load() {
     try { Object.assign(this.data, JSON.parse(fs.readFileSync(this.file, 'utf8'))); } catch (e) { /* первый запуск */ }
+    if (!this.data.serverUrl) this.data.serverUrl = Settings.bakedServerUrl();   // адрес CRM, вшитый при выпуске
     if (!this.data.deviceId) { this.data.deviceId = crypto.randomUUID(); this.save(); }
+  }
+  /** default-server.json кладёт publish-release.sh перед упаковкой: {"serverUrl": "https://…"} — сразу открываем CRM. */
+  static bakedServerUrl() {
+    try { return String(JSON.parse(fs.readFileSync(path.join(__dirname, 'default-server.json'), 'utf8')).serverUrl || '').trim().replace(/\/+$/, ''); }
+    catch (e) { return ''; }
   }
   save(patch) {
     if (patch) Object.assign(this.data, patch);
@@ -140,14 +146,14 @@ class CommandRouter {
     const manifest = String(a.manifest || '');
     if (!/^https?:\/\//.test(manifest)) throw new CommandError('bad_args', 'manifest');
     const url = manifest + (manifest.includes('?') ? '&' : '?') + 'platform=windows&current=' + VERSION;
-    const res = await net.fetch(url, { headers: { 'Accept': 'application/json' } });
+    const res = await enet.fetch(url, { headers: { 'Accept': 'application/json' } });
     if (!res.ok) throw new CommandError('failed', 'манифест: HTTP ' + res.status);
     const rel = (await res.json()).message;
     const out = { current: VERSION, updating: false };
     if (!rel || !rel.url) return out;
     const dir = process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('downloads');
     const target = path.join(dir, `Flux CRM ${rel.version}.exe`);
-    const file = await net.fetch(rel.url);
+    const file = await enet.fetch(rel.url);
     if (!file.ok) throw new CommandError('failed', 'загрузка: HTTP ' + file.status);
     fs.writeFileSync(target, Buffer.from(await file.arrayBuffer()));
     setTimeout(() => { shell.openPath(target).then(() => { this.engine.quitting = true; app.quit(); }); }, 800);

@@ -13,3 +13,4 @@ mobile/ios/FanDvizhok/GoogleService-Info.plist
 desktop/selftest.png
 mobile/android/keystore/
 mobile/android/keystore.properties
+desktop/default-server.json
