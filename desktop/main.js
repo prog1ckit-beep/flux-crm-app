@@ -86,6 +86,9 @@ class CommandRouter {
       'alert.close': (a, ctx) => { if (ctx.internal && engine.alertWin && !engine.alertWin.isDestroyed()) engine.alertWin.close(); return {}; },
       'notify.show': a => this.notify(a),
       'notify.alert': a => this.alert(a),
+      'notify.toast': a => this.engine.toasts.show(a),
+      'toast.open': (a, ctx) => { if (ctx.internal) this.engine.toasts.finish(a.id, 'click'); return {}; },
+      'toast.close': (a, ctx) => { if (ctx.internal) this.engine.toasts.finish(a.id, 'close'); return {}; },
       'clipboard.read': () => ({ text: clipboard.readText() }),
       'clipboard.write': a => { clipboard.writeText(String(a.text || '')); return {}; },
       'app.keepAwake': a => this.keepAwake(!!a.on),
@@ -99,7 +102,7 @@ class CommandRouter {
       'files.save': a => this.saveFile(a)
     };
   }
-  features() { return Object.keys(this.table).filter(k => !['settings.save', 'app.reload', 'alert.close'].includes(k)); }
+  features() { return Object.keys(this.table).filter(k => !['settings.save', 'app.reload', 'alert.close', 'toast.open', 'toast.close'].includes(k)); }
   info() {
     return { platform: 'windows', engine: ENGINE, version: VERSION, deviceId: this.engine.settings.data.deviceId, model: os.hostname(), features: this.features() };
   }
@@ -227,10 +230,49 @@ class Permissions {
   }
 }
 
+// ---------- всплывающие уведомления (как в Telegram): окошко снизу справа поверх всех программ, звук, стопка ----------
+class Toasts {
+  constructor(engine) { this.engine = engine; this.list = []; this.seq = 0; }
+  show(a) {
+    const { screen } = require('electron');
+    const id = String(++this.seq);
+    const W = 360, H = 96, GAP = 8;
+    const area = screen.getPrimaryDisplay().workArea;
+    const y = area.y + area.height - H - GAP - this.list.length * (H + GAP);
+    const w = new BrowserWindow({
+      width: W, height: H, x: area.x + area.width - W - GAP, y, frame: false, transparent: true, alwaysOnTop: true, skipTaskbar: true,
+      resizable: false, focusable: false, show: false, hasShadow: false,
+      webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false, autoplayPolicy: 'no-user-gesture-required' }
+    });
+    w.setAlwaysOnTop(true, 'screen-saver');
+    const q = new URLSearchParams({ id, title: String(a.title || 'Flux CRM'), body: String(a.body || ''), seconds: String(a.seconds == null ? 6 : Number(a.seconds) || 0), sound: a.sound === false ? '0' : '1' });
+    w.loadURL(this.engine.uiUrl('toast.html') + '?' + q.toString());
+    w.once('ready-to-show', () => w.showInactive());
+    return new Promise(resolve => {
+      const item = { id, win: w, url: a.url ? String(a.url) : '', resolve };
+      this.list.push(item);
+      w.on('closed', () => { this.list = this.list.filter(t => t !== item); this.relayout(); item.resolve({ closed: item.how || 'window' }); });
+    });
+  }
+  finish(id, how) {
+    const item = this.list.find(t => t.id === String(id));
+    if (!item) return;
+    item.how = how;
+    if (how === 'click' && item.url) this.engine.openUrl(item.url);
+    if (!item.win.isDestroyed()) item.win.close();
+  }
+  relayout() {
+    const { screen } = require('electron');
+    const area = screen.getPrimaryDisplay().workArea, H = 96, GAP = 8;
+    this.list.forEach((t, i) => { if (!t.win.isDestroyed()) t.win.setPosition(t.win.getPosition()[0], area.y + area.height - H - GAP - i * (H + GAP)); });
+  }
+}
+
 // ---------- движок ----------
 class Engine {
   constructor() {
     this.settings = new Settings(path.join(app.getPath('userData'), 'settings.json'));
+    this.toasts = new Toasts(this);
     this.router = new CommandRouter(this);
     this.perms = new Permissions(this);
     this.shim = fs.readFileSync(this.shimPath(), 'utf8');

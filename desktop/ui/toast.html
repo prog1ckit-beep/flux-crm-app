@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Flux CRM — уведомление</title>
+<style>
+  html,body{margin:0;background:transparent;overflow:hidden}
+  .t{position:absolute;right:0;bottom:0;width:352px;box-sizing:border-box;background:#1b1e27;color:#e8e8ee;border:1px solid #383838;border-left:4px solid #ff3fb4;border-radius:12px;padding:12px 14px 12px 12px;
+     box-shadow:0 10px 30px rgba(0,0,0,.55);font:14px/1.4 system-ui,Segoe UI,sans-serif;display:flex;gap:12px;align-items:flex-start;cursor:pointer;
+     transform:translateY(120%);animation:in .28s cubic-bezier(.2,.8,.2,1) forwards}
+  .t.out{animation:out .22s ease-in forwards}
+  @keyframes in{to{transform:translateY(0)}} @keyframes out{to{transform:translateY(120%);opacity:0}}
+  img{width:36px;height:36px;border-radius:50%;background:#15161c;border:1.5px solid #ff3fb4;padding:6px;box-sizing:border-box;flex:0 0 auto}
+  .b{flex:1;min-width:0} .h{font-weight:700;font-size:14px;margin-bottom:2px;display:flex;justify-content:space-between;gap:8px}
+  .h span:last-child{color:#8a8fa3;font-weight:400;font-size:12px;white-space:nowrap}
+  .m{color:#c9cbd6;white-space:pre-wrap;word-break:break-word;max-height:66px;overflow:hidden}
+  .x{position:absolute;top:6px;right:8px;color:#8a8fa3;font-size:16px;line-height:1;padding:2px 4px}
+  .x:hover{color:#fff}
+</style>
+</head>
+<body>
+<div class="t" id="t">
+  <img src="logo.svg" alt="">
+  <div class="b"><div class="h"><span id="h"></span><span id="when"></span></div><div class="m" id="m"></div></div>
+  <div class="x" id="x">✕</div>
+</div>
+<audio id="a" src="toast.wav" preload="auto"></audio>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search), t = document.getElementById('t');
+    document.getElementById('h').textContent = q.get('title') || 'Flux CRM';
+    document.getElementById('m').textContent = q.get('body') || '';
+    document.getElementById('when').textContent = new Date().toLocaleTimeString().slice(0, 5);
+    var id = q.get('id') || '';
+    var call = function (cmd) { window.FanNative.call(JSON.stringify({ id: 'x', cmd: cmd, args: { id: id } })); };
+    var closing = false, close = function (how) { if (closing) return; closing = true; t.classList.add('out'); setTimeout(function () { call(how === 'click' ? 'toast.open' : 'toast.close'); }, 220); };
+    t.addEventListener('click', function () { close('click'); });
+    document.getElementById('x').addEventListener('click', function (e) { e.stopPropagation(); close('x'); });
+    if (q.get('sound') !== '0') { var a = document.getElementById('a'); a.volume = 0.8; a.play().catch(function () {}); }
+    var s = Number(q.get('seconds') || 6); if (s > 0) setTimeout(function () { close('timeout'); }, s * 1000);
+  })();
+</script>
+</body>
+</html>

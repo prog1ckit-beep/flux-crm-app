@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.9';
+  var VERSION = '1.0.10';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно
@@ -96,7 +96,7 @@
   function WebFallback(g) { this.g = g; }
   WebFallback.prototype.features = function () {
     var g = this.g, f = ['settings.get', 'app.open', 'files.save', 'camera.photo'];
-    if (g.document) f.push('notify.alert');
+    if (g.document) f.push('notify.alert', 'notify.toast');
     if (g.navigator && g.navigator.mediaDevices && g.navigator.mediaDevices.enumerateDevices) f.push('camera.list');
     if (g.BarcodeDetector) f.push('camera.scan');
     if (g.Notification) f.push('notify.show');
@@ -122,6 +122,7 @@
       case 'clipboard.write': return g.navigator.clipboard.writeText(String(args.text || '')).then(function () { return {}; });
       case 'notify.show': return this.notify(args);
       case 'notify.alert': return this.alert(args);
+      case 'notify.toast': return this.toast(args);
       case 'camera.photo': return this.photo(args);
       case 'camera.scan': return this.scan(args);
       case 'camera.list': return this.cameras();
@@ -181,6 +182,43 @@
         });
         return { cameras: cams };
       });
+    });
+  };
+  /** Всплывающее уведомление в самой странице (снизу справа, звук через WebAudio) — Android/iOS/браузер; Windows делает нативно. */
+  WebFallback.prototype.chime = function () {
+    var g = this.g, AC = g.AudioContext || g.webkitAudioContext;
+    if (!AC) return;
+    try {
+      var ctx = new AC(), t0 = ctx.currentTime;
+      [[880, 0, 0.16], [1320, 0.16, 0.42]].forEach(function (n) {
+        var o = ctx.createOscillator(), gn = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = n[0];
+        gn.gain.setValueAtTime(0.0001, t0 + n[1]); gn.gain.exponentialRampToValueAtTime(0.5, t0 + n[1] + 0.01); gn.gain.exponentialRampToValueAtTime(0.0001, t0 + n[1] + n[2]);
+        o.connect(gn); gn.connect(ctx.destination); o.start(t0 + n[1]); o.stop(t0 + n[1] + n[2] + 0.05);
+      });
+      setTimeout(function () { ctx.close(); }, 1200);
+    } catch (e) { /* без звука */ }
+  };
+  WebFallback.prototype.toast = function (args) {
+    var g = this.g, doc = g.document, self = this;
+    if (!doc || !doc.body) return Promise.reject(new FanDeviceError('unsupported', 'нет document', 'notify.toast'));
+    var host = doc.getElementById('fan-toasts');
+    if (!host) { host = doc.createElement('div'); host.id = 'fan-toasts'; host.setAttribute('style', 'position:fixed;right:12px;bottom:12px;z-index:2147483000;display:flex;flex-direction:column-reverse;gap:8px;max-width:min(360px,92vw)'); doc.body.appendChild(host); }
+    return new Promise(function (resolve) {
+      var t = doc.createElement('div');
+      t.setAttribute('style', 'background:#1b1e27;color:#e8e8ee;border:1px solid #383838;border-left:4px solid #ff3fb4;border-radius:12px;padding:12px 30px 12px 12px;box-shadow:0 10px 30px rgba(0,0,0,.55);font:14px/1.4 system-ui,sans-serif;cursor:pointer;position:relative;transform:translateY(120%);transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s');
+      var h = doc.createElement('div'); h.textContent = args.title || 'Flux CRM'; h.setAttribute('style', 'font-weight:700;margin-bottom:2px');
+      var b = doc.createElement('div'); b.textContent = args.body || ''; b.setAttribute('style', 'color:#c9cbd6;white-space:pre-wrap;word-break:break-word');
+      var x = doc.createElement('div'); x.textContent = '✕'; x.setAttribute('style', 'position:absolute;top:6px;right:10px;color:#8a8fa3;font-size:16px');
+      t.appendChild(h); t.appendChild(b); t.appendChild(x); host.appendChild(t);
+      g.requestAnimationFrame(function () { t.style.transform = 'translateY(0)'; });
+      var done = false, timer = null;
+      var close = function (how) { if (done) return; done = true; clearTimeout(timer); t.style.opacity = '0'; t.style.transform = 'translateY(120%)'; setTimeout(function () { t.remove(); }, 250); resolve({ closed: how }); };
+      t.addEventListener('click', function () { close('click'); if (args.url) g.location.href = args.url; });
+      x.addEventListener('click', function (e) { e.stopPropagation(); close('x'); });
+      if (args.sound !== false) self.chime();
+      var s = args.seconds == null ? 6 : Number(args.seconds) || 0;
+      if (s > 0) timer = setTimeout(function () { close('timeout'); }, s * 1000);
     });
   };
   WebFallback.prototype.pickFile = function (accept, capture) {
@@ -274,7 +312,8 @@
     this.push = { register: function () { return self.call('push.register', {}); } };
     this.notify = {
       show: function (a) { return self.call('notify.show', a || {}); },
-      alert: function (a) { return self.call('notify.alert', a || {}); }
+      alert: function (a) { return self.call('notify.alert', a || {}); },
+      toast: function (a) { return self.call('notify.toast', a || {}); }
     };
     this.clipboard = {
       read: function () { return self.call('clipboard.read', {}).then(function (r) { return r.text; }); },
@@ -313,7 +352,7 @@
   FanDevice.prototype.bytes = Bytes;
 
   /** Команды, которые shim умеет сам, если нативный слой ответил unsupported (Windows: камера через getUserMedia). */
-  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'camera.list', 'notify.show', 'notify.alert', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
+  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'camera.list', 'notify.show', 'notify.alert', 'notify.toast', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
 
   FanDevice.prototype._fallbackHas = function (feature) {
     return FanDevice.FALLBACKABLE.indexOf(feature) >= 0 && this.fallback.features().indexOf(feature) >= 0;

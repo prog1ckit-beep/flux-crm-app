@@ -70,6 +70,7 @@ web/fan-device.js  — ОДИН файл, вживляется движком в
 | `push.register` | — | `{type:"fcm"|"apns"|"webpush"|"none", token?}` | fcm при `google-services.json` | apns | webpush (используй FanPush) |
 | `notify.show` | `{title, body?, url?, tag?}` | `{}` — системное уведомление; тап открывает `url` в движке | ✓ | ✓ | ✓ |
 | `notify.alert` | `{title, body?, button?, seconds?}` | `{closed}` — сообщение на ВЕСЬ экран; Windows — отдельное окно поверх всех программ | overlay в странице (shim) | overlay в странице (shim) | ✓ нативное окно |
+| `notify.toast` | `{title, body?, url?, seconds?:6, sound?:true}` | `{closed}` — всплывающее снизу справа со звуком, как в Telegram; клик → `url` | в странице (shim) | в странице (shim) | ✓ окно поверх всех программ |
 | `clipboard.read` | — | `{text}` | ✓ | ✓ | ✓ |
 | `clipboard.write` | `{text}` | `{}` | ✓ | ✓ | ✓ |
 | `app.keepAwake` | `{on:bool}` | `{}` | ✓ | ✓ | ✓ |
