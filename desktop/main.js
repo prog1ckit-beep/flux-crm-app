@@ -146,7 +146,7 @@ class CommandRouter {
     const out = { current: VERSION, updating: false };
     if (!rel || !rel.url) return out;
     const dir = process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('downloads');
-    const target = path.join(dir, `FAN ${rel.version}.exe`);
+    const target = path.join(dir, `Flux CRM ${rel.version}.exe`);
     const file = await net.fetch(rel.url);
     if (!file.ok) throw new CommandError('failed', 'загрузка: HTTP ' + file.status);
     fs.writeFileSync(target, Buffer.from(await file.arrayBuffer()));
