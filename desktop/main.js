@@ -87,6 +87,8 @@ class CommandRouter {
       'notify.show': a => this.notify(a),
       'notify.alert': a => this.alert(a),
       'notify.toast': a => this.engine.toasts.show(a),
+      'point.enable': a => this.engine.point.setEnabled(!!a.on),
+      'point.status': () => this.engine.point.status(),
       'toast.open': (a, ctx) => { if (ctx.internal) this.engine.toasts.finish(a.id, 'click'); return {}; },
       'toast.close': (a, ctx) => { if (ctx.internal) this.engine.toasts.finish(a.id, 'close'); return {}; },
       'clipboard.read': () => ({ text: clipboard.readText() }),
@@ -230,6 +232,56 @@ class Permissions {
   }
 }
 
+// ---------- точка печати: опрос заданий с сервера CRM и печать на принтеры этого ПК (docs/PRINT-POINTS-SPEC.md) ----------
+class PrintPoint {
+  constructor(engine) { this.engine = engine; this.timer = null; this.busy = false; this.stats = { printed: 0, errors: 0, lastPoll: null, lastError: '' }; }
+  get enabled() { return !!this.engine.settings.data.pointEnabled; }
+  setEnabled(on) {
+    this.engine.settings.save({ pointEnabled: !!on });
+    try { app.setLoginItemSettings({ openAtLogin: !!on, args: ['--hidden'] }); } catch (e) { /* не во всех сборках */ }
+    on ? this.start() : this.stop();
+    return this.status();
+  }
+  status() { return Object.assign({ enabled: this.enabled, deviceId: this.engine.settings.data.deviceId, server: this.engine.settings.serverUrl }, this.stats); }
+  start() { if (this.timer) return; this.timer = setInterval(() => this.tick(), 3000); this.tick(); }
+  stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
+  /** Запрос к CRM с cookie сессии приложения (человек вошёл в CRM в этом же окне). */
+  async api(method, params) {
+    const url = this.engine.settings.serverUrl + '/api/method/' + method;
+    const res = await enet.fetch(url, { method: 'POST', useSessionCookies: true, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(params || {}) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.message === undefined) throw new Error('HTTP ' + res.status + ' ' + (j.exception || '').slice(0, 120));
+    return j.message;
+  }
+  async tick() {
+    if (this.busy || !this.enabled || !this.engine.settings.serverUrl) return;
+    this.busy = true;
+    try {
+      const r = await this.api('crm_dvizhok.api.point_poll', { device_id: this.engine.settings.data.deviceId });
+      this.stats.lastPoll = new Date().toISOString(); this.stats.lastError = '';
+      for (const job of (r.jobs || [])) await this.run(job);
+    } catch (e) { this.stats.lastError = String(e.message || e); }
+    this.busy = false;
+  }
+  async run(job) {
+    let status = 'done', error = '';
+    try {
+      const copies = Math.max(1, Number(job.copies) || 1);
+      for (let i = 0; i < copies; i++) {
+        if (job.printer_kind === 'tcp') {
+          const [host, port] = String(job.printer_id).split(':');
+          await this.engine.router.printer.send(host, Number(port) || 9100, Buffer.from(String(job.payload), job.kind === 'html' ? 'utf8' : 'base64'));
+        } else if (job.kind === 'html') {
+          await this.engine.router.printHtml({ html: job.payload, printer: job.printer_id, silent: true });
+        } else throw new CommandError('unsupported', 'сырые команды на принтер Windows без сети пока не печатаем — используй сетевой (tcp) принтер');
+      }
+      this.stats.printed++;
+    } catch (e) { status = 'error'; error = String(e.message || e); this.stats.errors++; }
+    try { await this.api('crm_dvizhok.api.job_done', { job: job.job, status, error }); } catch (e) { this.stats.lastError = String(e.message || e); }
+    this.engine.deliver({ event: 'point.job', data: { job: job.job, title: job.title, status, error, printer: job.printer_title, owner: job.owner } });
+  }
+}
+
 // ---------- всплывающие уведомления (как в Telegram): окошко снизу справа поверх всех программ, звук, стопка ----------
 class Toasts {
   constructor(engine) { this.engine = engine; this.list = []; this.seq = 0; }
@@ -273,6 +325,7 @@ class Engine {
   constructor() {
     this.settings = new Settings(path.join(app.getPath('userData'), 'settings.json'));
     this.toasts = new Toasts(this);
+    this.point = new PrintPoint(this);
     this.router = new CommandRouter(this);
     this.perms = new Permissions(this);
     this.shim = fs.readFileSync(this.shimPath(), 'utf8');
@@ -296,6 +349,7 @@ class Engine {
     if (this.selftest) this.runSelftest();
     else if (this.settings.serverUrl) this.loadServer();
     else this.openSettings();
+    if (!this.selftest && this.point.enabled) this.point.start();   // точка печати: опрос заданий с запуска (автозапуск при входе)
   }
   createWindow() {
     this.win = new BrowserWindow({
@@ -313,7 +367,7 @@ class Engine {
     wc.setWindowOpenHandler(({ url }) => { this.settings.isAllowedUrl(url) ? this.win.loadURL(url) : shell.openExternal(url); return { action: 'deny' }; });
     wc.on('will-navigate', (e, url) => { if (!this.settings.isAllowedUrl(url) && !url.startsWith('file://')) { e.preventDefault(); shell.openExternal(url); } });
     wc.on('page-title-updated', e => e.preventDefault());
-    this.win.once('ready-to-show', () => this.win.show());
+    this.win.once('ready-to-show', () => { if (!process.argv.includes('--hidden')) this.win.show(); });
     this.win.on('close', e => { if (!this.quitting && !this.selftest) { e.preventDefault(); this.win.hide(); } });
     this.win.on('show', () => this.deliver({ event: 'resume', data: {} }));
     this.win.on('hide', () => this.deliver({ event: 'pause', data: {} }));

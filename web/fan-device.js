@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.10';
+  var VERSION = '1.0.11';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно
@@ -341,6 +341,10 @@
         return b64.then(function (v) { return self.call('files.save', { name: a.name, base64: v, mime: a.mime || (a.blob && a.blob.type) || 'application/octet-stream' }); });
       },
       share: function (a) { return self.call('files.share', a || {}); }
+    };
+    this.point = {
+      enable: function (on) { return self.call('point.enable', { on: !!on }); },
+      status: function () { return self.call('point.status', {}); }
     };
     this.settings = {
       get: function () { return self.call('settings.get', {}); },
