@@ -121,7 +121,9 @@ final class EngineViewController: UIViewController, WKNavigationDelegate, WKUIDe
         decisionHandler(.allow)
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let u = action.request.url { settings.isAllowed(url: u.absoluteString) ? webView.load(URLRequest(url: u)) : UIApplication.shared.open(u) }
+        if let u = action.request.url {
+            if settings.isAllowed(url: u.absoluteString) { _ = webView.load(URLRequest(url: u)) } else { UIApplication.shared.open(u) }
+        }
         return nil
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showOffline(error) }
