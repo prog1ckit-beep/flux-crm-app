@@ -115,6 +115,7 @@ class CommandRouter(private val host: Host) {
             }
         },
         "print.tcp" to PrintTcpCommand(io, main),
+        "app.update" to AppUpdateCommand(io, main),
         "files.save" to FilesSaveCommand(),
         "files.share" to FilesShareCommand()
     )
@@ -225,6 +226,34 @@ class PrintTcpCommand(private val io: java.util.concurrent.ExecutorService, priv
             if (p.size != 4) return host == "localhost"
             val (a, b) = p
             return a == 10 || a == 127 || (a == 172 && b in 16..31) || (a == 192 && b == 168) || (a == 100 && b in 64..127)
+        }
+    }
+}
+
+// ---------- обновление приложения (кнопка «Обновить» в шторке CRM) ----------
+/** Читает манифест версий с сервера CRM; если версия новее — скачивает APK и открывает системный установщик. */
+class AppUpdateCommand(private val io: java.util.concurrent.ExecutorService, private val main: Handler) : Command {
+    override fun run(args: JSONObject, host: Host, done: (Result<JSONObject>) -> Unit) {
+        val manifest = args.optString("manifest", "")
+        if (!manifest.startsWith("http")) return done(Result.failure(CommandError("bad_args", "manifest")))
+        val url = manifest + (if (manifest.contains("?")) "&" else "?") + "platform=android&current=" + BuildConfig.VERSION_NAME
+        io.execute {
+            val r = runCatching {
+                val body = java.net.URL(url).openConnection().let { c -> c.connectTimeout = 8000; c.readTimeout = 15000; c.getInputStream().bufferedReader().readText() }
+                val rel = JSONObject(body).optJSONObject("message")
+                val out = JSONObject().put("current", BuildConfig.VERSION_NAME).put("updating", false)
+                if (rel == null || rel.optString("url").isEmpty()) out
+                else {
+                    val apk = File(host.activity.cacheDir, "update.apk")
+                    java.net.URL(rel.getString("url")).openStream().use { inp -> apk.outputStream().use { inp.copyTo(it) } }
+                    val uri = FileProvider.getUriForFile(host.activity, host.activity.packageName + ".files", apk)
+                    val intent = Intent(Intent.ACTION_VIEW).setDataAndType(uri, "application/vnd.android.package-archive")
+                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                    main.post { host.activity.startActivity(intent) }
+                    out.put("updating", true).put("version", rel.optString("version")).put("size", apk.length())
+                }
+            }.recoverCatching { throw CommandError("failed", it.message ?: "update") }
+            main.post { done(r) }
         }
     }
 }

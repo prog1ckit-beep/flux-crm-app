@@ -19,7 +19,7 @@
 <script>
   (function () {
     var q = new URLSearchParams(location.search);
-    document.getElementById('t').textContent = q.get('title') || 'ФАН';
+    document.getElementById('t').textContent = q.get('title') || 'CRM-Express.md';
     document.getElementById('b').textContent = q.get('body') || '';
     var ok = document.getElementById('ok'); ok.textContent = q.get('button') || 'Закрыть';
     var close = function () { window.FanNative.call(JSON.stringify({ id: 'x', cmd: 'alert.close', args: {} })); };

@@ -1,6 +1,6 @@
 {
   "name": "fan-dvizhok-desktop",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "private": true,
   "description": "ФАН движок для Windows (Electron): CRM с сервера + FanDevice",
   "main": "main.js",
@@ -11,7 +11,7 @@
   },
   "build": {
     "appId": "md.fan.dvizhok",
-    "productName": "FAN",
+    "productName": "CRM-Express.md",
     "files": [
       "**/*",
       "!node_modules/.cache"

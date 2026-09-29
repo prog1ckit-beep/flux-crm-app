@@ -71,6 +71,7 @@ final class CommandRouter {
                 UIApplication.shared.open(u); return [:]
             },
             "print.tcp": PrintTcpCommand(),
+            "app.update": AppUpdateCommand(),
             "files.save": FilesSaveCommand(),
             "files.share": FilesShareCommand()
         ]
@@ -112,7 +113,7 @@ struct NotifyCommand: Command {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
             guard ok else { return done(.failure(CommandError(.denied, "уведомления запрещены"))) }
             let c = UNMutableNotificationContent()
-            c.title = a["title"] as? String ?? "ФАН"
+            c.title = a["title"] as? String ?? "CRM-Express.md"
             c.body = a["body"] as? String ?? ""
             c.sound = .default
             if let url = a["url"] as? String { c.userInfo["url"] = url }
@@ -154,6 +155,24 @@ struct PrintTcpCommand: Command {
         }
         conn.start(queue: .global())
         DispatchQueue.global().asyncAfter(deadline: .now() + 5) { finish(.failure(CommandError(.failed, "принтер не ответил: \(hostName)"))) }
+    }
+}
+
+/// iOS без магазина сам себя не переустанавливает: отдаём {manual:true, url} — страница откроет ссылку (Sideloadly/TestFlight).
+struct AppUpdateCommand: Command {
+    func run(_ a: [String: Any], _ h: Host, _ done: @escaping Done) {
+        let current = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0"
+        guard let m = a["manifest"] as? String, var comps = URLComponents(string: m) else { return done(.failure(CommandError(.bad_args, "manifest"))) }
+        comps.queryItems = (comps.queryItems ?? []) + [URLQueryItem(name: "platform", value: "ios"), URLQueryItem(name: "current", value: current)]
+        guard let url = comps.url else { return done(.failure(CommandError(.bad_args, "manifest"))) }
+        URLSession.shared.dataTask(with: url) { data, _, err in
+            DispatchQueue.main.async {
+                guard let d = data, let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return done(.failure(CommandError(.failed, err?.localizedDescription ?? "манифест"))) }
+                var out: [String: Any] = ["current": current, "updating": false]
+                if let rel = j["message"] as? [String: Any], let v = rel["version"] as? String { out["version"] = v; out["manual"] = true; out["url"] = rel["url"] ?? "" }
+                done(.success(out))
+            }
+        }.resume()
     }
 }
 

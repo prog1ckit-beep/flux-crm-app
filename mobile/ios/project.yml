@@ -17,7 +17,7 @@ targets:
     info:
       path: FanDvizhok/Info.plist
       properties:
-        CFBundleDisplayName: ФАН
+        CFBundleDisplayName: CRM-Express.md
         UILaunchScreen: {}
         UIBackgroundModes: [remote-notification]
         NSCameraUsageDescription: Камера для фото и сканирования штрих-кодов в CRM

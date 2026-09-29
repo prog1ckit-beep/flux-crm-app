@@ -1,7 +1,7 @@
 'use strict';
 /* ФАН движок для Windows (Electron). Всё содержимое — с сервера CRM; здесь только окно, разрешения,
  * нативные команды FanDevice (docs/SPEC-FANDEVICE-v1.md), трей, настройки. Код в ООП. */
-const { app, BrowserWindow, session, ipcMain, Notification, clipboard, shell, powerSaveBlocker, Tray, Menu, nativeImage, dialog } = require('electron');
+const { app, BrowserWindow, session, ipcMain, Notification, clipboard, shell, powerSaveBlocker, Tray, Menu, nativeImage, net } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const net = require('net');
@@ -86,6 +86,7 @@ class CommandRouter {
       'app.badge': a => { app.setBadgeCount(Number(a.count) || 0); return {}; },
       'app.open': a => { this.assertUrl(a.url); shell.openExternal(a.url); return {}; },
       'push.register': () => ({ type: 'webpush' }),
+      'app.update': a => this.update(a),
       'print.tcp': a => this.printer.send(String(a.host || ''), Number(a.port) || 9100, Buffer.from(String(a.base64 || ''), 'base64')),
       'print.list': () => this.printers(),
       'print.html': a => this.printHtml(a),
@@ -112,7 +113,7 @@ class CommandRouter {
   }
   notify(a) {
     if (!Notification.isSupported()) throw new CommandError('unsupported', 'Notification');
-    const n = new Notification({ title: String(a.title || 'ФАН'), body: String(a.body || ''), silent: false });
+    const n = new Notification({ title: String(a.title || 'CRM-Express.md'), body: String(a.body || ''), silent: false });
     if (a.url) n.on('click', () => this.engine.openUrl(String(a.url)));
     else n.on('click', () => this.engine.show());
     n.show();
@@ -126,13 +127,31 @@ class CommandRouter {
         webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false }
       });
       w.setAlwaysOnTop(true, 'screen-saver');
-      const q = new URLSearchParams({ title: String(a.title || 'ФАН'), body: String(a.body || ''), button: String(a.button || 'Закрыть'), seconds: String(Number(a.seconds) || 0) });
+      const q = new URLSearchParams({ title: String(a.title || 'CRM-Express.md'), body: String(a.body || ''), button: String(a.button || 'Закрыть'), seconds: String(Number(a.seconds) || 0) });
       w.loadURL(this.engine.uiUrl('alert.html') + '?' + q.toString());
       w.once('ready-to-show', () => { w.show(); w.focus(); });
       w.on('closed', () => resolve({ closed: 'window' }));
       this.engine.alertWin = w;
       if (a.seconds > 0) setTimeout(() => { if (!w.isDestroyed()) w.close(); }, a.seconds * 1000);
     });
+  }
+  /** Кнопка «Обновить»: манифест с сервера CRM → если новее, скачать portable EXE рядом с текущим, запустить его и выйти. */
+  async update(a) {
+    const manifest = String(a.manifest || '');
+    if (!/^https?:\/\//.test(manifest)) throw new CommandError('bad_args', 'manifest');
+    const url = manifest + (manifest.includes('?') ? '&' : '?') + 'platform=windows&current=' + VERSION;
+    const res = await net.fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new CommandError('failed', 'манифест: HTTP ' + res.status);
+    const rel = (await res.json()).message;
+    const out = { current: VERSION, updating: false };
+    if (!rel || !rel.url) return out;
+    const dir = process.env.PORTABLE_EXECUTABLE_DIR || app.getPath('downloads');
+    const target = path.join(dir, `FAN ${rel.version}.exe`);
+    const file = await net.fetch(rel.url);
+    if (!file.ok) throw new CommandError('failed', 'загрузка: HTTP ' + file.status);
+    fs.writeFileSync(target, Buffer.from(await file.arrayBuffer()));
+    setTimeout(() => { shell.openPath(target).then(() => { this.engine.quitting = true; app.quit(); }); }, 800);
+    return Object.assign(out, { updating: true, version: rel.version, path: target });
   }
   keepAwake(on) {
     if (on && this.awake === null) this.awake = powerSaveBlocker.start('prevent-display-sleep');
@@ -227,7 +246,7 @@ class Engine {
   }
   createWindow() {
     this.win = new BrowserWindow({
-      width: 1280, height: 800, show: false, backgroundColor: '#111318', title: 'ФАН',
+      width: 1280, height: 800, show: false, backgroundColor: '#111318', title: 'CRM-Express.md',
       autoHideMenuBar: true, fullscreen: !!this.settings.data.fullscreen,
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false, spellcheck: false }
     });
@@ -247,7 +266,7 @@ class Engine {
   createTray() {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'ui', 'icon.png'));
     this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-    this.tray.setToolTip('ФАН движок');
+    this.tray.setToolTip('CRM-Express.md');
     this.tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Открыть', click: () => this.show() },
       { label: 'Перезагрузить', click: () => this.loadServer() },
