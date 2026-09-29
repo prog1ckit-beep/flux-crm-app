@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -19,10 +21,23 @@ android {
         versionName = "1.0.5"
         buildConfigField("boolean", "HAS_FIREBASE", hasFirebase.toString())
     }
+    // Постоянный ключ подписи (mobile/android/keystore.properties, вне git; копия в секретах Hub2) — обновления ставятся
+    // поверх друг друга только при одном ключе. Без файла — debug-ключ (только для локальной отладки).
+    val ksProps = Properties().apply { rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) } }
+    signingConfigs {
+        create("release") {
+            if (ksProps.getProperty("storeFile") != null) {
+                storeFile = rootProject.file(ksProps.getProperty("storeFile"))
+                storePassword = ksProps.getProperty("storePassword")
+                keyAlias = ksProps.getProperty("keyAlias")
+                keyPassword = ksProps.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug") // внутреннее использование: debug-подпись, ставим APK руками
+            signingConfig = if (ksProps.getProperty("storeFile") != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
     buildFeatures { buildConfig = true }
