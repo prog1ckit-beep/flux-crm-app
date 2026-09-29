@@ -48,6 +48,16 @@ final class CommandRouter {
             "settings.open": SyncCommand { _, h in h.openSettings(); return [:] },
             "app.reload": SyncCommand { _, h in h.loadServer(); return [:] },
             "camera.photo": PhotoCommand(),
+            "camera.list": SyncCommand { _, _ in
+                let s = AVCaptureDevice.DiscoverySession(deviceTypes: [.builtInWideAngleCamera, .builtInUltraWideCamera, .builtInTelephotoCamera], mediaType: .video, position: .unspecified)
+                let cams: [[String: Any]] = s.devices.map { d in
+                    let facing = d.position == .front ? "front" : d.position == .back ? "back" : "unknown"
+                    let dims = CMVideoFormatDescriptionGetDimensions(d.activeFormat.formatDescription)
+                    let mp = (Double(dims.width) * Double(dims.height) / 100000.0).rounded() / 10.0
+                    return ["id": d.uniqueID, "facing": facing, "label": d.localizedName, "megapixels": mp, "width": Int(dims.width), "height": Int(dims.height), "flash": d.hasFlash, "zoom": Double(d.activeFormat.videoMaxZoomFactor)]
+                }
+                return ["cameras": cams]
+            },
             "camera.scan": ScanCommand(),
             "push.register": PushCommand(),
             "notify.show": NotifyCommand(),

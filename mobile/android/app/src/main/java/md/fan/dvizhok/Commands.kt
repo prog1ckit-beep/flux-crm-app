@@ -6,6 +6,9 @@ import android.content.ClipboardManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.graphics.ImageFormat
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -64,6 +67,7 @@ class CommandRouter(private val host: Host) {
         "settings.open" to object : SyncCommand() { override fun exec(args: JSONObject, host: Host): JSONObject { host.openSettings(); return JSONObject() } },
         "app.reload" to object : SyncCommand() { override fun exec(args: JSONObject, host: Host): JSONObject { host.loadServer(); return JSONObject() } },
         "camera.photo" to PhotoCommand(),
+        "camera.list" to CameraListCommand(),
         "camera.scan" to ScanCommand(),
         "push.register" to PushCommand(),
         "notify.show" to object : SyncCommand() {
@@ -133,6 +137,30 @@ class CommandRouter(private val host: Host) {
 class PhotoCommand : Command {
     override fun run(args: JSONObject, host: Host, done: (Result<JSONObject>) -> Unit) =
         host.takePhoto(args.optBoolean("front", false), args.optInt("quality", 80).coerceIn(10, 100), done)
+}
+
+/** Камеры устройства (Camera2): сторона, мегапиксели, вспышка, зум — чтобы страница предложила выбор. */
+class CameraListCommand : SyncCommand() {
+    override fun exec(args: JSONObject, host: Host): JSONObject {
+        val cm = host.activity.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+        val arr = JSONArray()
+        for (id in cm.cameraIdList) {
+            val ch = runCatching { cm.getCameraCharacteristics(id) }.getOrNull() ?: continue
+            val facing = when (ch.get(CameraCharacteristics.LENS_FACING)) {
+                CameraCharacteristics.LENS_FACING_FRONT -> "front"
+                CameraCharacteristics.LENS_FACING_BACK -> "back"
+                else -> "external"
+            }
+            val best = ch.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)?.getOutputSizes(ImageFormat.JPEG)?.maxByOrNull { it.width.toLong() * it.height }
+            val mp = best?.let { Math.round(it.width * it.height / 100000.0) / 10.0 } ?: 0.0
+            val flash = ch.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) ?: false
+            val zoom = ch.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM) ?: 1f
+            val label = (if (facing == "front") "Фронтальная" else if (facing == "back") "Задняя" else "Внешняя") + " $mp Мп"
+            arr.put(JSONObject().put("id", id).put("facing", facing).put("label", label).put("megapixels", mp)
+                .put("width", best?.width ?: 0).put("height", best?.height ?: 0).put("flash", flash).put("zoom", zoom.toDouble()))
+        }
+        return JSONObject().put("cameras", arr)
+    }
 }
 
 /** Сканер штрих-кодов Google (play-services-code-scanner): своё UI, разрешение на камеру не нужно. */

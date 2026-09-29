@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.1';
+  var VERSION = '1.0.2';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно
@@ -97,6 +97,7 @@
   WebFallback.prototype.features = function () {
     var g = this.g, f = ['settings.get', 'app.open', 'files.save', 'camera.photo'];
     if (g.document) f.push('notify.alert');
+    if (g.navigator && g.navigator.mediaDevices && g.navigator.mediaDevices.enumerateDevices) f.push('camera.list');
     if (g.BarcodeDetector) f.push('camera.scan');
     if (g.Notification) f.push('notify.show');
     if (g.navigator && g.navigator.clipboard) f.push('clipboard.read', 'clipboard.write');
@@ -123,6 +124,7 @@
       case 'notify.alert': return this.alert(args);
       case 'camera.photo': return this.photo(args);
       case 'camera.scan': return this.scan(args);
+      case 'camera.list': return this.cameras();
       case 'files.save': return this.save(args);
       case 'files.share':
         if (!g.navigator.share) return Promise.reject(new FanDeviceError('unsupported', 'navigator.share', cmd));
@@ -161,6 +163,24 @@
       var close = function (how) { if (!box.parentNode) return; clearTimeout(timer); box.remove(); resolve({ closed: how }); };
       btn.onclick = function () { close('button'); };
       if (args.seconds > 0) timer = setTimeout(function () { close('timeout'); }, args.seconds * 1000);
+    });
+  };
+  /** Список камер через браузер (enumerateDevices): подписи появляются после разрешения — просим видео и сразу отпускаем. */
+  WebFallback.prototype.cameras = function () {
+    var md = this.g.navigator && this.g.navigator.mediaDevices;
+    if (!md || !md.enumerateDevices) return Promise.reject(new FanDeviceError('unsupported', 'mediaDevices', 'camera.list'));
+    var stop = function (s) { if (s) s.getTracks().forEach(function (t) { t.stop(); }); };
+    var grab = md.getUserMedia ? md.getUserMedia({ video: true }).catch(function () { return null; }) : Promise.resolve(null);
+    return grab.then(function (stream) {
+      return md.enumerateDevices().then(function (list) {
+        stop(stream);
+        var cams = list.filter(function (d) { return d.kind === 'videoinput'; }).map(function (d, i) {
+          var l = d.label || ('Камера ' + (i + 1));
+          var facing = /back|rear|environment|задн/i.test(l) ? 'back' : /front|user|face|фронт/i.test(l) ? 'front' : 'unknown';
+          return { id: d.deviceId, label: l, facing: facing };
+        });
+        return { cameras: cams };
+      });
     });
   };
   WebFallback.prototype.pickFile = function (accept, capture) {
@@ -248,7 +268,8 @@
     });
     this.camera = {
       photo: function (a) { return self.call('camera.photo', a || {}); },
-      scan: function (a) { return self.call('camera.scan', a || {}); }
+      scan: function (a) { return self.call('camera.scan', a || {}); },
+      list: function () { return self.call('camera.list', {}); }
     };
     this.push = { register: function () { return self.call('push.register', {}); } };
     this.notify = {
@@ -291,7 +312,7 @@
   FanDevice.prototype.bytes = Bytes;
 
   /** Команды, которые shim умеет сам, если нативный слой ответил unsupported (Windows: камера через getUserMedia). */
-  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'notify.show', 'notify.alert', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
+  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'camera.list', 'notify.show', 'notify.alert', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
 
   FanDevice.prototype._fallbackHas = function (feature) {
     return FanDevice.FALLBACKABLE.indexOf(feature) >= 0 && this.fallback.features().indexOf(feature) >= 0;

@@ -65,6 +65,7 @@ web/fan-device.js  — ОДИН файл, вживляется движком в
 | `settings.get` | — | `{serverUrl}` | ✓ | ✓ | ✓ |
 | `settings.open` | — | `{}` — открыть нативный экран настроек (адрес сервера, QR) | ✓ | ✓ | ✓ |
 | `camera.photo` | `{quality?:0..100, front?:bool}` | `{dataUrl, mime, width, height}` | ✓ | ✓ | web-fallback |
+| `camera.list` | — | `{cameras:[{id, facing:"back"|"front"|"external"|"unknown", label, megapixels?, width?, height?, flash?, zoom?}]}` | ✓ Camera2 | ✓ AVCapture | web-fallback (`enumerateDevices`) |
 | `camera.scan` | `{formats?:["qr","ean13","code128",…]}` | `{text, format}` | ✓ (Google code scanner) | ✓ (Vision) | web-fallback (`BarcodeDetector`, иначе unsupported) |
 | `push.register` | — | `{type:"fcm"|"apns"|"webpush"|"none", token?}` | fcm при `google-services.json` | apns | webpush (используй FanPush) |
 | `notify.show` | `{title, body?, url?, tag?}` | `{}` — системное уведомление; тап открывает `url` в движке | ✓ | ✓ | ✓ |

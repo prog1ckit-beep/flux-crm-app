@@ -49,7 +49,7 @@ class MainActivity : AppCompatActivity(), Host {
     private var photoDone: ((Result<JSONObject>) -> Unit)? = null
     private var photoFile: File? = null
     private var photoQuality = 80
-    private val photoLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok -> finishPhoto(ok) }
+    private val photoLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r -> finishPhoto(r.resultCode == Activity.RESULT_OK) }
     private var fileChooser: ValueCallback<Array<Uri>>? = null
     private val fileLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         val uris = WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data)
@@ -165,7 +165,17 @@ class MainActivity : AppCompatActivity(), Host {
         photoDone = done; photoQuality = quality
         val f = File(cacheDir, "photo-${System.currentTimeMillis()}.jpg"); photoFile = f
         val uri = FileProvider.getUriForFile(this, "$packageName.files", f)
-        runCatching { photoLauncher.launch(uri) }.onFailure { photoDone = null; done(Result.failure(CommandError("failed", it.message ?: "camera"))) }
+        // Системная камера: EXTRA_OUTPUT в наш файл; подсказки «фронтальная» понимают камеры Samsung/Google/Xiaomi (не стандарт, но безвредно)
+        val intent = Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE).apply {
+            putExtra(android.provider.MediaStore.EXTRA_OUTPUT, uri)
+            addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            if (front) {
+                putExtra("android.intent.extras.CAMERA_FACING", 1)
+                putExtra("android.intent.extras.LENS_FACING_FRONT", 1)
+                putExtra("android.intent.extra.USE_FRONT_CAMERA", true)
+            }
+        }
+        runCatching { photoLauncher.launch(intent) }.onFailure { photoDone = null; done(Result.failure(CommandError("failed", it.message ?: "camera"))) }
     }
     private fun finishPhoto(ok: Boolean) {
         val done = photoDone ?: return; photoDone = null
