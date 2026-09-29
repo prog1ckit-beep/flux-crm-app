@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ФАН — настройки движка</title>
+<style>
+  :root{--bg:#111318;--fg:#e8e8ee;--card:#1b1e27;--pink:#ff4fa3;--mut:#8a8fa3}
+  body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif;padding:20px}
+  h1{font-size:18px;margin:0 0 14px}
+  label{display:block;margin:12px 0 4px;color:var(--mut);font-size:13px}
+  input[type=text]{width:100%;box-sizing:border-box;background:var(--card);color:var(--fg);border:1px solid #333;border-radius:8px;padding:10px;font-size:15px}
+  .row{display:flex;gap:8px;align-items:center;margin-top:12px}
+  button{background:var(--pink);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:15px;cursor:pointer}
+  button.sec{background:#2a2e3b}
+  .hint{color:var(--mut);font-size:13px;margin-top:4px}
+  #msg{margin-top:12px;min-height:20px}
+</style>
+</head>
+<body>
+<h1>Настройки движка ФАН</h1>
+<label>Адрес сервера CRM (меняется вместе с туннелем)</label>
+<input type="text" id="serverUrl" placeholder="https://….trycloudflare.com">
+<div class="hint">Можно вставить из буфера обмена: адрес показан в CRM → «Открыть в приложении».</div>
+<label>Дополнительные разрешённые адреса (через запятую)</label>
+<input type="text" id="allowHosts" placeholder="obmen.example, 192.168.88.10:8080">
+<label>Устройство по умолчанию для Web Serial / USB / Bluetooth (подстрока имени; пусто = первое найденное)</label>
+<input type="text" id="serialMatch" placeholder="CAS, COM3, TSC">
+<div class="row"><input type="checkbox" id="fullscreen"><label for="fullscreen" style="margin:0">Во весь экран (киоск)</label></div>
+<div class="row">
+  <button id="save">Сохранить и открыть CRM</button>
+  <button class="sec" id="paste">Вставить адрес из буфера</button>
+</div>
+<div id="msg"></div>
+<script>
+  (function () {
+    var $ = function (id) { return document.getElementById(id); };
+    function dev() { return window.FanDevice; }
+    function fill() {
+      dev().settings.get().then(function (s) { $('serverUrl').value = s.serverUrl || ''; });
+    }
+    $('paste').onclick = function () { dev().clipboard.read().then(function (t) { if (/^https?:\/\//.test(t)) $('serverUrl').value = t.trim(); else $('msg').textContent = 'В буфере не адрес'; }); };
+    $('save').onclick = function () {
+      dev().call('settings.save', { serverUrl: $('serverUrl').value, allowHosts: $('allowHosts').value, serialMatch: $('serialMatch').value, fullscreen: $('fullscreen').checked })
+        .then(function () { $('msg').textContent = 'Сохранено'; setTimeout(function () { window.close(); }, 400); },
+              function (e) { $('msg').textContent = 'Ошибка: ' + e.code + ' ' + e.message; });
+    };
+    var tries = 0, t = setInterval(function () { if (dev()) { clearInterval(t); fill(); } else if (++tries > 50) { clearInterval(t); $('msg').textContent = 'FanDevice не вживлён'; } }, 100);
+  })();
+</script>
+</body>
+</html>

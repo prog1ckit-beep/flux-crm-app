@@ -1,0 +1,37 @@
+# XcodeGen: `brew install xcodegen && xcodegen generate` на Mac → FanDvizhok.xcodeproj. Затем Xcode → Signing (Apple ID) → Run на iPhone.
+name: FanDvizhok
+options:
+  bundleIdPrefix: md.fan
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  FanDvizhok:
+    type: application
+    platform: iOS
+    sources:
+      - path: FanDvizhok
+      - path: ../../web/fan-device.js          # один источник shim на все платформы
+        buildPhase: resources
+      - path: ../android/app/src/main/assets/offline.html
+        buildPhase: resources
+    info:
+      path: FanDvizhok/Info.plist
+      properties:
+        CFBundleDisplayName: ФАН
+        UILaunchScreen: {}
+        UIBackgroundModes: [remote-notification]
+        NSCameraUsageDescription: Камера для фото и сканирования штрих-кодов в CRM
+        NSMicrophoneUsageDescription: Микрофон для звонков и голосовых сообщений в CRM
+        NSLocationWhenInUseUsageDescription: Геолокация для CRM
+        NSPhotoLibraryAddUsageDescription: Сохранение файлов из CRM
+        NSLocalNetworkUsageDescription: Печать на принтеры в локальной сети
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true      # внутреннее использование: http в локальной сети
+    entitlements:
+      path: FanDvizhok/FanDvizhok.entitlements
+      properties:
+        aps-environment: development
+    settings:
+      base:
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"

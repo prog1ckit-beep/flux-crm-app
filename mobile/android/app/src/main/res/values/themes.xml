@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.FanDvizhok" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#111318</item>
+        <item name="android:statusBarColor">#111318</item>
+        <item name="android:navigationBarColor">#111318</item>
+        <item name="colorPrimary">#FF4FA3</item>
+        <item name="colorAccent">#FF4FA3</item>
+        <item name="android:textColorPrimary">#E8E8EE</item>
+    </style>
+</resources>

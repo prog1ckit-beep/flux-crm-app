@@ -1,0 +1,375 @@
+/* fan-device.js — единый JS-слой движка ФАН (FanDevice v1).
+ * Вживляется движком (Android/iOS/Windows) в верхнюю страницу CRM и сам попадает в same-origin рамки.
+ * В обычном браузере работает как web-fallback (ограниченно). Файл идемпотентен: повторный запуск ничего не ломает.
+ * Контракт: docs/SPEC-FANDEVICE-v1.md. Код в ООП (закон владельца).
+ */
+(function (global) {
+  'use strict';
+  var VERSION = '1.0.0';
+
+  if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
+    return; // уже вживлён в это окно
+  }
+
+  // ---------- ошибки ----------
+  function FanDeviceError(code, message, cmd) {
+    var e = Error.call(this, message || code);
+    this.name = 'FanDeviceError';
+    this.code = code;
+    this.cmd = cmd || null;
+    this.message = message || code;
+    this.stack = e.stack;
+  }
+  FanDeviceError.prototype = Object.create(Error.prototype);
+  FanDeviceError.prototype.constructor = FanDeviceError;
+
+  // ---------- транспорты ----------
+  /** Транспорт: одна функция call(requestJson) → строка JSON | Promise<строка JSON> | объект. */
+  function NativeTransport(fanNative) { this.fanNative = fanNative; }
+  NativeTransport.prototype.kind = 'native';
+  NativeTransport.prototype.call = function (json) { return this.fanNative.call(json); };
+
+  /** iOS: webkit.messageHandlers.FanNative.postMessage — ответа нет, всё приходит через _deliver. */
+  function WebKitTransport(handler) { this.handler = handler; }
+  WebKitTransport.prototype.kind = 'webkit';
+  WebKitTransport.prototype.call = function (json) {
+    this.handler.postMessage(json);
+    return '{"ok":true,"pending":true}';
+  };
+
+  function detectTransport(g) {
+    if (g.FanNative && typeof g.FanNative.call === 'function') return new NativeTransport(g.FanNative);
+    var wk = g.webkit && g.webkit.messageHandlers && g.webkit.messageHandlers.FanNative;
+    if (wk && typeof wk.postMessage === 'function') return new WebKitTransport(wk);
+    return null;
+  }
+
+  // ---------- ожидание ответов ----------
+  function PendingCalls() { this.map = {}; this.seq = 0; this.salt = Math.random().toString(36).slice(2, 8); }
+  PendingCalls.prototype.nextId = function () { this.seq += 1; return this.salt + '-' + this.seq; };
+  PendingCalls.prototype.add = function (id, cmd, resolve, reject) { this.map[id] = { cmd: cmd, resolve: resolve, reject: reject }; };
+  PendingCalls.prototype.take = function (id) { var p = this.map[id]; delete this.map[id]; return p || null; };
+  PendingCalls.prototype.size = function () { return Object.keys(this.map).length; };
+
+  // ---------- события ----------
+  function EventBus() { this.handlers = {}; }
+  EventBus.prototype.on = function (name, fn) { (this.handlers[name] = this.handlers[name] || []).push(fn); return fn; };
+  EventBus.prototype.off = function (name, fn) {
+    var list = this.handlers[name] || [];
+    var i = list.indexOf(fn);
+    if (i >= 0) list.splice(i, 1);
+  };
+  EventBus.prototype.emit = function (name, data) {
+    var list = (this.handlers[name] || []).slice();
+    for (var i = 0; i < list.length; i++) {
+      try { list[i](data); } catch (e) { if (global.console) console.error('FanDevice event ' + name, e); }
+    }
+    return list.length;
+  };
+
+  // ---------- кодировки ----------
+  var Bytes = {
+    toBase64: function (u8) {
+      if (typeof u8 === 'string') return u8;
+      if (global.Buffer) return global.Buffer.from(u8).toString('base64');
+      var s = '';
+      for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
+      return global.btoa(s);
+    },
+    fromBase64: function (b64) {
+      if (global.Buffer) return new Uint8Array(global.Buffer.from(b64, 'base64'));
+      var bin = global.atob(b64), u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      return u8;
+    },
+    blobToBase64: function (blob) {
+      return new Promise(function (resolve, reject) {
+        var r = new global.FileReader();
+        r.onerror = function () { reject(new FanDeviceError('failed', 'FileReader')); };
+        r.onload = function () { resolve(String(r.result).split(',')[1] || ''); };
+        r.readAsDataURL(blob);
+      });
+    }
+  };
+
+  // ---------- web-fallback (обычный браузер) ----------
+  function WebFallback(g) { this.g = g; }
+  WebFallback.prototype.features = function () {
+    var g = this.g, f = ['settings.get', 'app.open', 'files.save', 'camera.photo'];
+    if (g.BarcodeDetector) f.push('camera.scan');
+    if (g.Notification) f.push('notify.show');
+    if (g.navigator && g.navigator.clipboard) f.push('clipboard.read', 'clipboard.write');
+    if (g.navigator && g.navigator.share) f.push('files.share');
+    return f;
+  };
+  WebFallback.prototype.info = function () {
+    var ua = (this.g.navigator && this.g.navigator.userAgent) || '';
+    return {
+      platform: /Android/i.test(ua) ? 'android' : /iPhone|iPad/i.test(ua) ? 'ios' : /Windows/i.test(ua) ? 'windows' : 'web',
+      engine: 'browser', version: VERSION, deviceId: null, model: null, features: this.features()
+    };
+  };
+  WebFallback.prototype.call = function (cmd, args) {
+    var self = this, g = this.g;
+    args = args || {};
+    switch (cmd) {
+      case 'info': return Promise.resolve(this.info());
+      case 'settings.get': return Promise.resolve({ serverUrl: g.location ? g.location.origin : null });
+      case 'app.open': g.open(args.url, '_blank', 'noopener'); return Promise.resolve({});
+      case 'clipboard.read': return g.navigator.clipboard.readText().then(function (t) { return { text: t }; });
+      case 'clipboard.write': return g.navigator.clipboard.writeText(String(args.text || '')).then(function () { return {}; });
+      case 'notify.show': return this.notify(args);
+      case 'camera.photo': return this.photo(args);
+      case 'camera.scan': return this.scan(args);
+      case 'files.save': return this.save(args);
+      case 'files.share':
+        if (!g.navigator.share) return Promise.reject(new FanDeviceError('unsupported', 'navigator.share', cmd));
+        return g.navigator.share({ title: args.name, text: args.text }).then(function () { return {}; });
+      default:
+        return Promise.reject(new FanDeviceError('unsupported', 'нет в браузере: ' + cmd, cmd));
+    }
+  };
+  WebFallback.prototype.notify = function (args) {
+    var g = this.g, N = g.Notification;
+    if (!N) return Promise.reject(new FanDeviceError('unsupported', 'Notification', 'notify.show'));
+    var show = function () {
+      var n = new N(args.title || 'ФАН', { body: args.body || '', tag: args.tag });
+      if (args.url) n.onclick = function () { g.location.href = args.url; };
+      return {};
+    };
+    if (N.permission === 'granted') return Promise.resolve(show());
+    return N.requestPermission().then(function (p) {
+      if (p !== 'granted') throw new FanDeviceError('denied', 'уведомления запрещены', 'notify.show');
+      return show();
+    });
+  };
+  WebFallback.prototype.pickFile = function (accept, capture) {
+    var doc = this.g.document;
+    return new Promise(function (resolve, reject) {
+      var input = doc.createElement('input');
+      input.type = 'file'; input.accept = accept; if (capture) input.capture = capture;
+      input.style.display = 'none';
+      input.onchange = function () { var f = input.files && input.files[0]; input.remove(); f ? resolve(f) : reject(new FanDeviceError('cancelled', 'файл не выбран')); };
+      doc.body.appendChild(input);
+      input.click();
+    });
+  };
+  WebFallback.prototype.photo = function (args) {
+    var g = this.g;
+    return this.pickFile('image/*', args.front ? 'user' : 'environment').then(function (file) {
+      return Bytes.blobToBase64(file).then(function (b64) {
+        var dataUrl = 'data:' + (file.type || 'image/jpeg') + ';base64,' + b64;
+        return new Promise(function (resolve) {
+          var img = new g.Image();
+          img.onload = function () { resolve({ dataUrl: dataUrl, mime: file.type || 'image/jpeg', width: img.naturalWidth, height: img.naturalHeight }); };
+          img.onerror = function () { resolve({ dataUrl: dataUrl, mime: file.type || 'image/jpeg', width: 0, height: 0 }); };
+          img.src = dataUrl;
+        });
+      });
+    });
+  };
+  WebFallback.prototype.scan = function (args) {
+    var g = this.g, doc = g.document;
+    if (!g.BarcodeDetector) return Promise.reject(new FanDeviceError('unsupported', 'BarcodeDetector', 'camera.scan'));
+    var formats = (args.formats && args.formats.length && args.formats.indexOf('any') < 0) ? args.formats : null;
+    var map = { qr: 'qr_code', ean13: 'ean_13', ean8: 'ean_8', code128: 'code_128', code39: 'code_39', upc: 'upc_a', datamatrix: 'data_matrix', pdf417: 'pdf417' };
+    var detector = new g.BarcodeDetector(formats ? { formats: formats.map(function (f) { return map[f] || f; }) } : undefined);
+    return g.navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(function (stream) {
+      return new Promise(function (resolve, reject) {
+        var box = doc.createElement('div');
+        box.setAttribute('style', 'position:fixed;inset:0;background:#000;z-index:2147483000;display:flex;flex-direction:column');
+        var video = doc.createElement('video');
+        video.setAttribute('style', 'flex:1;width:100%;object-fit:cover'); video.playsInline = true; video.muted = true; video.srcObject = stream;
+        var btn = doc.createElement('button');
+        btn.textContent = 'Отмена'; btn.setAttribute('style', 'font-size:18px;padding:14px;background:#222;color:#fff;border:0');
+        box.appendChild(video); box.appendChild(btn); doc.body.appendChild(box);
+        var done = false, timer = null;
+        var finish = function (err, res) {
+          if (done) return; done = true;
+          clearInterval(timer);
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          box.remove();
+          err ? reject(err) : resolve(res);
+        };
+        btn.onclick = function () { finish(new FanDeviceError('cancelled', 'отменено', 'camera.scan')); };
+        video.play().then(function () {
+          timer = setInterval(function () {
+            detector.detect(video).then(function (codes) {
+              if (codes && codes.length) finish(null, { text: codes[0].rawValue, format: codes[0].format });
+            }).catch(function () {});
+          }, 150);
+        }).catch(function (e) { finish(new FanDeviceError('failed', String(e), 'camera.scan')); });
+      });
+    }, function (e) { throw new FanDeviceError('denied', String(e), 'camera.scan'); });
+  };
+  WebFallback.prototype.save = function (args) {
+    var doc = this.g.document, a = doc.createElement('a');
+    a.href = 'data:' + (args.mime || 'application/octet-stream') + ';base64,' + args.base64;
+    a.download = args.name || 'file'; a.style.display = 'none';
+    doc.body.appendChild(a); a.click(); a.remove();
+    return Promise.resolve({});
+  };
+
+  // ---------- главный объект ----------
+  function FanDevice(g, transport, fallback) {
+    var self = this;
+    this.g = g;
+    this.version = VERSION;
+    this.transport = transport;
+    this.fallback = fallback;
+    this.native = !!transport;
+    this._isTop = (g.top === g);
+    this._pending = new PendingCalls();
+    this._bus = new EventBus();
+    this._info = null;
+    this.ready = this.call('info').then(function (info) { self._info = info; return info; }, function (e) {
+      self._info = { platform: 'web', engine: 'broken', version: VERSION, features: [] };
+      throw e;
+    });
+    this.camera = {
+      photo: function (a) { return self.call('camera.photo', a || {}); },
+      scan: function (a) { return self.call('camera.scan', a || {}); }
+    };
+    this.push = { register: function () { return self.call('push.register', {}); } };
+    this.notify = { show: function (a) { return self.call('notify.show', a || {}); } };
+    this.clipboard = {
+      read: function () { return self.call('clipboard.read', {}).then(function (r) { return r.text; }); },
+      write: function (text) { return self.call('clipboard.write', { text: String(text) }); }
+    };
+    this.app = {
+      keepAwake: function (on) { return self.call('app.keepAwake', { on: !!on }); },
+      haptic: function (kind) { return self.call('app.haptic', { kind: kind || 'light' }); },
+      badge: function (count) { return self.call('app.badge', { count: count | 0 }); },
+      open: function (url) { return self.call('app.open', { url: String(url) }); }
+    };
+    this.print = {
+      tcp: function (a) {
+        a = a || {};
+        return self.call('print.tcp', { host: a.host, port: a.port || 9100, base64: a.bytes ? Bytes.toBase64(a.bytes) : a.base64 });
+      },
+      list: function () { return self.call('print.list', {}); },
+      html: function (a) { return self.call('print.html', a || {}); }
+    };
+    this.files = {
+      save: function (a) {
+        a = a || {};
+        var b64 = a.blob ? Bytes.blobToBase64(a.blob) : Promise.resolve(a.base64);
+        return b64.then(function (v) { return self.call('files.save', { name: a.name, base64: v, mime: a.mime || (a.blob && a.blob.type) || 'application/octet-stream' }); });
+      },
+      share: function (a) { return self.call('files.share', a || {}); }
+    };
+    this.settings = {
+      get: function () { return self.call('settings.get', {}); },
+      open: function () { return self.call('settings.open', {}); }
+    };
+  }
+
+  FanDevice.prototype.Error = FanDeviceError;
+  FanDevice.prototype.bytes = Bytes;
+
+  /** Команды, которые shim умеет сам, если нативный слой ответил unsupported (Windows: камера через getUserMedia). */
+  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'notify.show', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
+
+  FanDevice.prototype._fallbackHas = function (feature) {
+    return FanDevice.FALLBACKABLE.indexOf(feature) >= 0 && this.fallback.features().indexOf(feature) >= 0;
+  };
+  FanDevice.prototype.has = function (feature) {
+    var f = this._info && this._info.features;
+    if (f && f.indexOf(feature) >= 0) return true;
+    return !!this.transport && this._fallbackHas(feature);
+  };
+  FanDevice.prototype.info = function () { return this._info; };
+  FanDevice.prototype.on = function (name, fn) { return this._bus.on(name, fn); };
+  FanDevice.prototype.off = function (name, fn) { this._bus.off(name, fn); };
+
+  /** Любая команда контракта. */
+  FanDevice.prototype.call = function (cmd, args) {
+    var self = this;
+    if (!cmd || typeof cmd !== 'string') return Promise.reject(new FanDeviceError('bad_args', 'cmd', cmd));
+    if (!this.transport) return this.fallback.call(cmd, args || {});
+    return this._native(cmd, args).catch(function (e) {
+      if (e && e.code === 'unsupported' && self._fallbackHas(cmd)) return self.fallback.call(cmd, args || {});
+      throw e;
+    });
+  };
+
+  FanDevice.prototype._native = function (cmd, args) {
+    var self = this;
+    return new Promise(function (resolve, reject) {
+      var id = self._pending.nextId();
+      self._pending.add(id, cmd, resolve, reject);
+      var raw;
+      try {
+        raw = self.transport.call(JSON.stringify({ id: id, cmd: cmd, args: args || {} }));
+      } catch (e) {
+        self._pending.take(id);
+        reject(new FanDeviceError('failed', String(e && e.message || e), cmd));
+        return;
+      }
+      Promise.resolve(raw).then(function (res) {
+        self._settle(id, self._parse(res));
+      }, function (e) {
+        var p = self._pending.take(id);
+        if (p) p.reject(new FanDeviceError('failed', String(e && e.message || e), cmd));
+      });
+    });
+  };
+
+  FanDevice.prototype._parse = function (res) {
+    if (res == null) return { ok: true, pending: true };
+    if (typeof res === 'string') {
+      if (!res) return { ok: true, pending: true };
+      try { return JSON.parse(res); } catch (e) { return { ok: false, error: { code: 'failed', message: 'bad json from native: ' + res.slice(0, 80) } }; }
+    }
+    return res;
+  };
+
+  /** Ответ на запрос (сразу из call или позже из _deliver). */
+  FanDevice.prototype._settle = function (id, msg) {
+    if (!msg || msg.pending) return false;
+    var p = this._pending.take(id);
+    if (!p) return false;
+    if (msg.ok) p.resolve(msg.result === undefined ? {} : msg.result);
+    else {
+      var err = msg.error || {};
+      p.reject(new FanDeviceError(err.code || 'failed', err.message || err.code || 'ошибка движка', p.cmd));
+    }
+    return true;
+  };
+
+  /** Точка входа для нативного слоя: ответы и события. Принимает строку JSON или объект. */
+  FanDevice.prototype._deliver = function (msg) {
+    if (typeof msg === 'string') { try { msg = JSON.parse(msg); } catch (e) { return false; } }
+    if (!msg) return false;
+    if (msg.event) { return this._bus.emit(msg.event, msg.data || {}) >= 0; }
+    if (msg.id) return this._settle(msg.id, msg);
+    return false;
+  };
+
+  /** Один объект на все same-origin рамки: кладём себя в каждую (закон «один механизм»). */
+  FanDevice.prototype._watchFrames = function () {
+    var self = this, g = this.g, doc = g.document;
+    if (!doc || !this._isTop || this._frameTimer) return;
+    var install = function () {
+      var frames = doc.getElementsByTagName('iframe');
+      for (var i = 0; i < frames.length; i++) {
+        try {
+          var cw = frames[i].contentWindow;
+          if (cw && cw.FanDevice !== self) cw.FanDevice = self;
+        } catch (e) { /* чужой origin — не наш */ }
+      }
+    };
+    this._frameTimer = g.setInterval(install, 250);
+    install();
+  };
+
+  // ---------- сборка ----------
+  var transport = detectTransport(global);
+  var device = new FanDevice(global, transport, new WebFallback(global));
+  device.FanDevice = FanDevice;
+  if (global.document && global.top === global) device._watchFrames();
+  global.FanDevice = device;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { FanDevice: FanDevice, FanDeviceError: FanDeviceError, WebFallback: WebFallback, NativeTransport: NativeTransport, WebKitTransport: WebKitTransport, detectTransport: detectTransport, Bytes: Bytes, VERSION: VERSION };
+  }
+})(typeof window !== 'undefined' ? window : globalThis);

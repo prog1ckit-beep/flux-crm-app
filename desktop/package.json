@@ -1,0 +1,35 @@
+{
+  "name": "fan-dvizhok-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ФАН движок для Windows (Electron): CRM с сервера + FanDevice",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "selftest": "electron . --selftest",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "md.fan.dvizhok",
+    "productName": "FAN",
+    "files": [
+      "**/*",
+      "!node_modules/.cache"
+    ],
+    "extraResources": [
+      {
+        "from": "../web/fan-device.js",
+        "to": "web/fan-device.js"
+      }
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  }
+}

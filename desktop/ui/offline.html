@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>ФАН — сервер недоступен</title>
+<style>
+  :root{--bg:#111318;--fg:#e8e8ee;--mut:#8a8fa3;--pink:#ff4fa3}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,Segoe UI,Roboto,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh}
+  .box{max-width:460px;padding:24px;text-align:center}
+  h1{font-size:22px;margin:0 0 8px}
+  p{color:var(--mut);margin:0 0 18px;word-break:break-all}
+  button{background:var(--pink);color:#fff;border:0;border-radius:8px;padding:12px 18px;font-size:16px;margin:4px;cursor:pointer}
+  button.sec{background:#2a2e3b}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>Сервер CRM недоступен</h1>
+  <p id="info"></p>
+  <button id="retry">Повторить</button>
+  <button class="sec" id="settings">Настройки</button>
+</div>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search);
+    document.getElementById('info').textContent = (q.get('url') || '') + (q.get('err') ? ' — ' + q.get('err') : '');
+    document.getElementById('retry').onclick = function () { window.FanDevice.call('app.reload'); };
+    document.getElementById('settings').onclick = function () { window.FanDevice.settings.open(); };
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+node_modules/
+desktop/dist/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/app/google-services.json
+mobile/android/.idea/
+mobile/ios/*.xcodeproj/
+mobile/ios/build/
+mobile/ios/FanDvizhok/GoogleService-Info.plist
+*.log
+desktop/selftest.png

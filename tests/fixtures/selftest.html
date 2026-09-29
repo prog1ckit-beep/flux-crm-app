@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ФАН движок — самопроверка</title>
+<style>
+  :root{--bg:#111318;--fg:#e8e8ee;--ok:#3ddc84;--bad:#ff5370;--card:#1b1e27;--pink:#ff4fa3}
+  body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,Segoe UI,Roboto,sans-serif;padding:16px}
+  h1{font-size:20px;margin:0 0 12px}
+  .card{background:var(--card);border-radius:10px;padding:12px;margin:8px 0}
+  .ok{color:var(--ok)} .bad{color:var(--bad)} code{font-size:13px;word-break:break-all}
+  button{background:var(--pink);color:#fff;border:0;border-radius:8px;padding:10px 14px;font-size:15px;margin:4px 4px 4px 0}
+  pre{white-space:pre-wrap;font-size:13px;margin:6px 0 0}
+  iframe{width:100%;height:120px;border:1px solid #333;border-radius:8px;background:#000}
+</style>
+</head>
+<body>
+<h1>ФАН движок — самопроверка FanDevice</h1>
+<div class="card" id="auto">проверяю…</div>
+<div class="card">
+  <b>Ручные проверки</b> (нужен человек: камера, уведомление):<br>
+  <button onclick="run('camera.scan',{formats:['any']})">Сканер</button>
+  <button onclick="run('camera.photo',{quality:60})">Фото</button>
+  <button onclick="run('notify.show',{title:'ФАН',body:'проверка уведомления',url:location.href})">Уведомление</button>
+  <button onclick="run('clipboard.write',{text:'FanDevice '+new Date().toISOString()})">В буфер</button>
+  <button onclick="run('clipboard.read',{})">Из буфера</button>
+  <button onclick="run('app.haptic',{kind:'success'})">Вибрация</button>
+  <button onclick="run('push.register',{})">Push-токен</button>
+  <button onclick="run('print.list',{})">Принтеры</button>
+  <button onclick="run('settings.open',{})">Настройки движка</button>
+  <pre id="manual"></pre>
+</div>
+<div class="card">
+  <b>Рамка (как crm_embed)</b> — в ней должен быть тот же FanDevice:
+  <iframe id="frame" srcdoc="<body style='margin:8px;color:#ddd;font:14px system-ui;background:#000'>
+    <button onclick='check()'>FanDevice в рамке?</button> <span id=r></span>
+    <script>function check(){var d=window.FanDevice||window.parent.FanDevice;document.getElementById('r').textContent=d?('есть, native='+d.native+', same='+(d===window.parent.FanDevice)):'НЕТ'}
+    setTimeout(check,600)</script></body>"></iframe>
+</div>
+<script>
+  // Страница НЕ подключает fan-device.js сама: его вживляет движок. В обычном браузере — web-fallback не будет (нет объекта).
+  var results = {};
+  function line(k, ok, text){ return '<div><b>'+k+'</b>: <span class="'+(ok?'ok':'bad')+'">'+(ok?'✓':'✗')+'</span> <code>'+text+'</code></div>'; }
+  function report(){
+    var el = document.getElementById('auto'), html = '';
+    Object.keys(results).forEach(function(k){ html += line(k, results[k].ok, results[k].text); });
+    el.innerHTML = html || 'FanDevice отсутствует — страница открыта не движком';
+    var allOk = Object.keys(results).every(function(k){ return results[k].ok; });
+    document.title = (allOk ? 'SELFTEST OK' : 'SELFTEST FAIL') + ' — ФАН движок';
+    console.log(allOk ? 'FAN-SELFTEST-OK' : 'FAN-SELFTEST-FAIL', JSON.stringify(results));
+  }
+  function run(cmd, args){
+    var d = window.FanDevice, out = document.getElementById('manual');
+    if (!d) { out.textContent = 'нет FanDevice'; return; }
+    out.textContent = cmd + ' …';
+    d.call(cmd, args).then(function(r){ out.textContent = cmd + ' → ' + JSON.stringify(r).slice(0, 600); },
+      function(e){ out.textContent = cmd + ' ✗ ' + e.code + ': ' + e.message; });
+  }
+  function auto(){
+    var d = window.FanDevice;
+    if (!d) { results['FanDevice'] = {ok:false, text:'нет объекта'}; report(); return; }
+    results['FanDevice'] = {ok:true, text:'version '+d.version+', native='+d.native};
+    d.ready.then(function(info){
+      results['info'] = {ok: !!info.platform, text: JSON.stringify(info)};
+      results['has(info)'] = {ok: d.has('info') || d.has('clipboard.write'), text: 'features: '+(info.features||[]).join(', ')};
+      return d.settings.get();
+    }).then(function(s){ results['settings.get'] = {ok: !!s, text: JSON.stringify(s)}; })
+      .catch(function(e){ results['ошибка'] = {ok:false, text: e.code+': '+e.message}; })
+      .then(function(){ return d.call('нет.такой.команды').then(function(){ results['unsupported'] = {ok:false, text:'должна быть ошибка'}; },
+        function(e){ results['unsupported'] = {ok: e.code==='unsupported', text: e.code}; }); })
+      .then(function(){ return new Promise(function(res){ setTimeout(res, 900); }); })
+      .then(function(){
+        var fr = document.getElementById('frame'), txt = '';
+        try { txt = fr.contentDocument.getElementById('r').textContent; } catch (e) { txt = 'нет доступа: ' + e; }
+        results['рамка'] = {ok: /same=true/.test(txt), text: txt};
+      })
+      .then(report);
+  }
+  window.addEventListener('load', function(){ setTimeout(auto, 300); });
+</script>
+</body>
+</html>
