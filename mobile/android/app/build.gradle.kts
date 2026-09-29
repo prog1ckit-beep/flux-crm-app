@@ -15,8 +15,8 @@ android {
         applicationId = "md.fan.dvizhok"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         buildConfigField("boolean", "HAS_FIREBASE", hasFirebase.toString())
     }
     buildTypes {

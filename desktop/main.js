@@ -77,7 +77,9 @@ class CommandRouter {
       'settings.open': () => { engine.openSettings(); return {}; },
       'settings.save': (a, ctx) => this.settingsSave(a, ctx),
       'app.reload': (a, ctx) => { engine.loadServer(); return {}; },
+      'alert.close': (a, ctx) => { if (ctx.internal && engine.alertWin && !engine.alertWin.isDestroyed()) engine.alertWin.close(); return {}; },
       'notify.show': a => this.notify(a),
+      'notify.alert': a => this.alert(a),
       'clipboard.read': () => ({ text: clipboard.readText() }),
       'clipboard.write': a => { clipboard.writeText(String(a.text || '')); return {}; },
       'app.keepAwake': a => this.keepAwake(!!a.on),
@@ -90,7 +92,7 @@ class CommandRouter {
       'files.save': a => this.saveFile(a)
     };
   }
-  features() { return Object.keys(this.table).filter(k => !['settings.save', 'app.reload'].includes(k)); }
+  features() { return Object.keys(this.table).filter(k => !['settings.save', 'app.reload', 'alert.close'].includes(k)); }
   info() {
     return { platform: 'windows', engine: ENGINE, version: VERSION, deviceId: this.engine.settings.data.deviceId, model: os.hostname(), features: this.features() };
   }
@@ -115,6 +117,22 @@ class CommandRouter {
     else n.on('click', () => this.engine.show());
     n.show();
     return {};
+  }
+  /** Сообщение на весь экран поверх всех окон Windows (кухня, касса): закрывается кнопкой, Esc или по таймеру. */
+  alert(a) {
+    return new Promise(resolve => {
+      const w = new BrowserWindow({
+        fullscreen: true, alwaysOnTop: true, frame: false, skipTaskbar: true, backgroundColor: '#111318', show: false,
+        webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false }
+      });
+      w.setAlwaysOnTop(true, 'screen-saver');
+      const q = new URLSearchParams({ title: String(a.title || 'ФАН'), body: String(a.body || ''), button: String(a.button || 'Закрыть'), seconds: String(Number(a.seconds) || 0) });
+      w.loadURL(this.engine.uiUrl('alert.html') + '?' + q.toString());
+      w.once('ready-to-show', () => { w.show(); w.focus(); });
+      w.on('closed', () => resolve({ closed: 'window' }));
+      this.engine.alertWin = w;
+      if (a.seconds > 0) setTimeout(() => { if (!w.isDestroyed()) w.close(); }, a.seconds * 1000);
+    });
   }
   keepAwake(on) {
     if (on && this.awake === null) this.awake = powerSaveBlocker.start('prevent-display-sleep');
@@ -214,6 +232,7 @@ class Engine {
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false, spellcheck: false }
     });
     const wc = this.win.webContents;
+    wc.setUserAgent(wc.getUserAgent() + ' FanDvizhok/' + VERSION);   // сервер видит, что открыт движок
     this.perms.installBluetooth(wc);
     wc.on('dom-ready', () => this.inject());
     wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => { if (isMainFrame && code !== -3) this.showOffline(url, desc); });

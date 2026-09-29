@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>ФАН — сообщение</title>
+<style>
+  body{margin:0;background:#111318;color:#fff;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;text-align:center;font:22px/1.4 system-ui,Segoe UI,sans-serif;cursor:default}
+  h1{font-size:44px;margin:0 0 18px;color:#ff4fa3}
+  p{max-width:900px;white-space:pre-wrap;margin:0}
+  button{margin-top:36px;font-size:24px;padding:16px 40px;border:0;border-radius:12px;background:#ff4fa3;color:#fff;cursor:pointer}
+  .t{position:fixed;bottom:16px;right:20px;color:#8a8fa3;font-size:16px}
+</style>
+</head>
+<body>
+<h1 id="t"></h1>
+<p id="b"></p>
+<button id="ok"></button>
+<div class="t" id="left"></div>
+<script>
+  (function () {
+    var q = new URLSearchParams(location.search);
+    document.getElementById('t').textContent = q.get('title') || 'ФАН';
+    document.getElementById('b').textContent = q.get('body') || '';
+    var ok = document.getElementById('ok'); ok.textContent = q.get('button') || 'Закрыть';
+    var close = function () { window.FanNative.call(JSON.stringify({ id: 'x', cmd: 'alert.close', args: {} })); };
+    ok.onclick = close;
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' || e.key === 'Enter') close(); });
+    var s = Number(q.get('seconds') || 0);
+    if (s > 0) { var el = document.getElementById('left'); var tick = function () { el.textContent = 'закроется через ' + s + ' с'; if (s-- <= 0) return; setTimeout(tick, 1000); }; tick(); }
+    ok.focus();
+  })();
+</script>
+</body>
+</html>

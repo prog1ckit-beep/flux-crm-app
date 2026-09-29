@@ -68,6 +68,7 @@ web/fan-device.js  — ОДИН файл, вживляется движком в
 | `camera.scan` | `{formats?:["qr","ean13","code128",…]}` | `{text, format}` | ✓ (Google code scanner) | ✓ (Vision) | web-fallback (`BarcodeDetector`, иначе unsupported) |
 | `push.register` | — | `{type:"fcm"|"apns"|"webpush"|"none", token?}` | fcm при `google-services.json` | apns | webpush (используй FanPush) |
 | `notify.show` | `{title, body?, url?, tag?}` | `{}` — системное уведомление; тап открывает `url` в движке | ✓ | ✓ | ✓ |
+| `notify.alert` | `{title, body?, button?, seconds?}` | `{closed}` — сообщение на ВЕСЬ экран; Windows — отдельное окно поверх всех программ | overlay в странице (shim) | overlay в странице (shim) | ✓ нативное окно |
 | `clipboard.read` | — | `{text}` | ✓ | ✓ | ✓ |
 | `clipboard.write` | `{text}` | `{}` | ✓ | ✓ | ✓ |
 | `app.keepAwake` | `{on:bool}` | `{}` | ✓ | ✓ | ✓ |

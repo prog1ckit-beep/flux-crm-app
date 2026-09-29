@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.0';
+  var VERSION = '1.0.1';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно
@@ -96,6 +96,7 @@
   function WebFallback(g) { this.g = g; }
   WebFallback.prototype.features = function () {
     var g = this.g, f = ['settings.get', 'app.open', 'files.save', 'camera.photo'];
+    if (g.document) f.push('notify.alert');
     if (g.BarcodeDetector) f.push('camera.scan');
     if (g.Notification) f.push('notify.show');
     if (g.navigator && g.navigator.clipboard) f.push('clipboard.read', 'clipboard.write');
@@ -119,6 +120,7 @@
       case 'clipboard.read': return g.navigator.clipboard.readText().then(function (t) { return { text: t }; });
       case 'clipboard.write': return g.navigator.clipboard.writeText(String(args.text || '')).then(function () { return {}; });
       case 'notify.show': return this.notify(args);
+      case 'notify.alert': return this.alert(args);
       case 'camera.photo': return this.photo(args);
       case 'camera.scan': return this.scan(args);
       case 'files.save': return this.save(args);
@@ -141,6 +143,24 @@
     return N.requestPermission().then(function (p) {
       if (p !== 'granted') throw new FanDeviceError('denied', 'уведомления запрещены', 'notify.show');
       return show();
+    });
+  };
+  /** Сообщение на весь экран поверх страницы (там, где движок не умеет поверх всех окон: Android/iOS/браузер). */
+  WebFallback.prototype.alert = function (args) {
+    var doc = this.g.document;
+    if (!doc || !doc.body) return Promise.reject(new FanDeviceError('unsupported', 'нет document', 'notify.alert'));
+    return new Promise(function (resolve) {
+      var box = doc.createElement('div');
+      box.setAttribute('style', 'position:fixed;inset:0;z-index:2147483001;background:#111318;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;font:20px/1.4 system-ui,sans-serif');
+      var h = doc.createElement('div'); h.textContent = args.title || 'ФАН'; h.setAttribute('style', 'font-size:34px;font-weight:700;margin-bottom:16px;color:#ff4fa3');
+      var b = doc.createElement('div'); b.textContent = args.body || ''; b.setAttribute('style', 'max-width:720px;white-space:pre-wrap');
+      var btn = doc.createElement('button'); btn.textContent = args.button || 'Закрыть';
+      btn.setAttribute('style', 'margin-top:28px;font-size:20px;padding:14px 32px;border:0;border-radius:10px;background:#ff4fa3;color:#fff');
+      box.appendChild(h); box.appendChild(b); box.appendChild(btn); doc.body.appendChild(box);
+      var timer = null;
+      var close = function (how) { if (!box.parentNode) return; clearTimeout(timer); box.remove(); resolve({ closed: how }); };
+      btn.onclick = function () { close('button'); };
+      if (args.seconds > 0) timer = setTimeout(function () { close('timeout'); }, args.seconds * 1000);
     });
   };
   WebFallback.prototype.pickFile = function (accept, capture) {
@@ -231,7 +251,10 @@
       scan: function (a) { return self.call('camera.scan', a || {}); }
     };
     this.push = { register: function () { return self.call('push.register', {}); } };
-    this.notify = { show: function (a) { return self.call('notify.show', a || {}); } };
+    this.notify = {
+      show: function (a) { return self.call('notify.show', a || {}); },
+      alert: function (a) { return self.call('notify.alert', a || {}); }
+    };
     this.clipboard = {
       read: function () { return self.call('clipboard.read', {}).then(function (r) { return r.text; }); },
       write: function (text) { return self.call('clipboard.write', { text: String(text) }); }
@@ -268,7 +291,7 @@
   FanDevice.prototype.bytes = Bytes;
 
   /** Команды, которые shim умеет сам, если нативный слой ответил unsupported (Windows: камера через getUserMedia). */
-  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'notify.show', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
+  FanDevice.FALLBACKABLE = ['camera.photo', 'camera.scan', 'notify.show', 'notify.alert', 'clipboard.read', 'clipboard.write', 'files.save', 'files.share', 'app.open'];
 
   FanDevice.prototype._fallbackHas = function (feature) {
     return FanDevice.FALLBACKABLE.indexOf(feature) >= 0 && this.fallback.features().indexOf(feature) >= 0;
