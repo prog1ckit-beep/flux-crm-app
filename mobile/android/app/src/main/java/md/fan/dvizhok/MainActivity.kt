@@ -176,7 +176,7 @@ class MainActivity : AppCompatActivity(), Host {
         val url = settings.serverUrl
         if (url.isEmpty()) { openSettings(); return }
         loadedUrl = url
-        web.loadUrl(url)
+        web.loadUrl("$url/crm#welcome")   // заставка CRM, не список лидов (слово владельца 29.09)
     }
     override fun openSettings() { startActivity(Intent(this, SettingsActivity::class.java)) }
     override fun takePhoto(front: Boolean, quality: Int, done: (Result<JSONObject>) -> Unit) {

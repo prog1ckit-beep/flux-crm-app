@@ -50,7 +50,7 @@ final class EngineViewController: UIViewController, WKNavigationDelegate, WKUIDe
     }
     func loadServer() {
         let url = settings.serverUrl
-        guard !url.isEmpty, let u = URL(string: url) else { return openSettings() }
+        guard !url.isEmpty, let u = URL(string: url + "/crm#welcome") else { return openSettings() }   // заставка CRM
         loadedUrl = url
         web.load(URLRequest(url: u))
     }

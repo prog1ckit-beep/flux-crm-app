@@ -17,8 +17,8 @@ android {
         applicationId = "md.fan.dvizhok"
         minSdk = 26
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.0.12"
+        versionCode = 14
+        versionName = "1.0.13"
         buildConfigField("boolean", "HAS_FIREBASE", hasFirebase.toString())
         // Адрес CRM по умолчанию вшивается при выпуске: gradlew assembleRelease -PserverUrl=https://… (publish-release.sh)
         buildConfigField("String", "SERVER_URL", "\"${(project.findProperty("serverUrl") as String?)?.trim()?.trimEnd('/') ?: ""}\"")

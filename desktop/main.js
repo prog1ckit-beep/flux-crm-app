@@ -464,7 +464,7 @@ class Engine {
   inject() { this.win.webContents.executeJavaScript(this.shim, true).catch(() => {}); }
   loadServer() {
     if (!this.settings.serverUrl) { this.openSettings(); return; }
-    this.win.loadURL(this.settings.serverUrl);
+    this.win.loadURL(this.settings.serverUrl + '/crm#welcome');   // заставка CRM, не список лидов (слово владельца 29.09)
     this.show();
   }
   openUrl(url) {
