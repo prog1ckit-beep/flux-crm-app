@@ -1,6 +1,6 @@
 {
   "name": "fan-dvizhok",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "private": true,
   "description": "Нативный движок ФАН: WebView-приложение для CRM (Android / iOS / Windows) с единым FanDevice API",
   "scripts": {

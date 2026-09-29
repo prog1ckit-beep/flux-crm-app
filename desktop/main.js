@@ -51,6 +51,39 @@ class CommandError extends Error {
   constructor(code, message) { super(message || code); this.code = code; }
 }
 
+// PowerShell: сырые байты в очередь принтера Windows через winspool (как «copy /b», но с выбором принтера и без общего ресурса).
+const RAW_PRINT_PS1 = `param([string]$Printer, [string]$File2, [string]$Title)
+Add-Type -TypeDefinition @"
+using System; using System.IO; using System.Runtime.InteropServices;
+public class RawPrinter {
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct DOCINFO { [MarshalAs(UnmanagedType.LPWStr)] public string pDocName; [MarshalAs(UnmanagedType.LPWStr)] public string pOutputFile; [MarshalAs(UnmanagedType.LPWStr)] public string pDataType; }
+  [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)] static extern bool OpenPrinter(string name, out IntPtr h, IntPtr pd);
+  [DllImport("winspool.drv", SetLastError=true)] static extern bool ClosePrinter(IntPtr h);
+  [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)] static extern int StartDocPrinter(IntPtr h, int level, ref DOCINFO di);
+  [DllImport("winspool.drv", SetLastError=true)] static extern bool EndDocPrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError=true)] static extern bool StartPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError=true)] static extern bool EndPagePrinter(IntPtr h);
+  [DllImport("winspool.drv", SetLastError=true)] static extern bool WritePrinter(IntPtr h, IntPtr buf, int len, out int written);
+  public static int Send(string printer, byte[] data, string title) {
+    IntPtr h; if (!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("OpenPrinter: " + Marshal.GetLastWin32Error());
+    try {
+      DOCINFO di = new DOCINFO(); di.pDocName = title; di.pDataType = "RAW";
+      if (StartDocPrinter(h, 1, ref di) == 0) throw new Exception("StartDocPrinter: " + Marshal.GetLastWin32Error());
+      StartPagePrinter(h);
+      IntPtr p = Marshal.AllocCoTaskMem(data.Length); Marshal.Copy(data, 0, p, data.Length);
+      int w; bool ok = WritePrinter(h, p, data.Length, out w); Marshal.FreeCoTaskMem(p);
+      EndPagePrinter(h); EndDocPrinter(h);
+      if (!ok) throw new Exception("WritePrinter: " + Marshal.GetLastWin32Error());
+      return w;
+    } finally { ClosePrinter(h); }
+  }
+}
+"@
+$bytes = [System.IO.File]::ReadAllBytes($File2)
+$n = [RawPrinter]::Send($Printer, $bytes, $Title)
+Write-Output "written $n"
+`;
+
 // ---------- TCP печать (TSPL/ESC-POS, порт 9100) ----------
 class TcpPrinter {
   static isPrivate(host) {
@@ -101,6 +134,8 @@ class CommandRouter {
       'print.tcp': a => this.printer.send(String(a.host || ''), Number(a.port) || 9100, Buffer.from(String(a.base64 || ''), 'base64')),
       'print.list': () => this.printers(),
       'print.html': a => this.printHtml(a),
+      'print.raw': a => this.printRaw(a),
+      'print.pdf': a => this.printPdf(a),
       'files.save': a => this.saveFile(a)
     };
   }
@@ -191,6 +226,42 @@ class CommandRouter {
       });
     });
   }
+  /** Сырые байты (TSPL/ESC-POS) на принтер Windows (например «TSC TDP-225 RAW», драйвер Generic/Text Only) через winspool. */
+  printRaw(a) {
+    if (!a.printer) throw new CommandError('bad_args', 'printer');
+    const data = Buffer.from(String(a.base64 || ''), 'base64');
+    if (!data.length) throw new CommandError('bad_args', 'base64');
+    const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'flux-raw-'));
+    const bin = path.join(dir, 'job.bin'), ps1 = path.join(dir, 'raw.ps1');
+    fs.writeFileSync(bin, data);
+    fs.writeFileSync(ps1, RAW_PRINT_PS1, 'utf8');
+    return this.runPs(['-File', ps1, '-Printer', String(a.printer), '-File2', bin, '-Title', String(a.title || 'Flux CRM')], dir).then(() => ({ sent: data.length }));
+  }
+  /** PDF на принтер Windows: SumatraPDF (-print-to), если он есть рядом с приложением или установлен; иначе системный PrintTo. */
+  printPdf(a) {
+    if (!a.printer) throw new CommandError('bad_args', 'printer');
+    const data = Buffer.from(String(a.base64 || ''), 'base64');
+    if (!data.length) throw new CommandError('bad_args', 'base64');
+    const dir = fs.mkdtempSync(path.join(app.getPath('temp'), 'flux-pdf-'));
+    const pdf = path.join(dir, (String(a.name || 'print').replace(/[<>:"|?*\\/]/g, '_').replace(/\.pdf$/i, '')) + '.pdf');
+    fs.writeFileSync(pdf, data);
+    const sumatra = [path.join(process.resourcesPath || '', 'SumatraPDF.exe'), path.join(process.env.PROGRAMFILES || '', 'SumatraPDF', 'SumatraPDF.exe'),
+      path.join(process.env.LOCALAPPDATA || '', 'SumatraPDF', 'SumatraPDF.exe')].find(p => p && fs.existsSync(p));
+    if (sumatra) return this.runExe(sumatra, ['-print-to', String(a.printer), '-silent', '-exit-when-done', pdf], dir).then(() => ({ sent: data.length, via: 'sumatra' }));
+    const ps1 = path.join(dir, 'pdf.ps1');
+    fs.writeFileSync(ps1, 'param($F,$P)\n$p = Start-Process -FilePath $F -Verb PrintTo -ArgumentList ("\\"" + $P + "\\"") -PassThru -WindowStyle Hidden\nif ($p) { $p.WaitForExit(60000) | Out-Null }\n', 'utf8');
+    return this.runPs(['-File', ps1, '-F', pdf, '-P', String(a.printer)], dir).then(() => ({ sent: data.length, via: 'printto' }));
+  }
+  runPs(args, cleanupDir) { return this.runExe('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass'].concat(args), cleanupDir); }
+  runExe(exe, args, cleanupDir) {
+    return new Promise((resolve, reject) => {
+      require('child_process').execFile(exe, args, { windowsHide: true, timeout: 90000, maxBuffer: 1 << 20 }, (err, stdout, stderr) => {
+        setTimeout(() => { try { fs.rmSync(cleanupDir, { recursive: true, force: true }); } catch (e) { /* пусть лежит */ } }, 30000);
+        if (err) return reject(new CommandError('failed', (String(stderr || stdout || err.message)).trim().slice(0, 300)));
+        resolve(String(stdout || ''));
+      });
+    });
+  }
   saveFile(a) {
     const name = path.basename(String(a.name || 'file')).replace(/[<>:"|?*\\/]/g, '_');
     const dir = app.getPath('downloads');
@@ -273,7 +344,11 @@ class PrintPoint {
           await this.engine.router.printer.send(host, Number(port) || 9100, Buffer.from(String(job.payload), job.kind === 'html' ? 'utf8' : 'base64'));
         } else if (job.kind === 'html') {
           await this.engine.router.printHtml({ html: job.payload, printer: job.printer_id, silent: true });
-        } else throw new CommandError('unsupported', 'сырые команды на принтер Windows без сети пока не печатаем — используй сетевой (tcp) принтер');
+        } else if (job.kind === 'pdf') {
+          await this.engine.router.printPdf({ printer: job.printer_id, base64: job.payload, name: job.title });
+        } else {
+          await this.engine.router.printRaw({ printer: job.printer_id, base64: job.payload, title: job.title });
+        }
       }
       this.stats.printed++;
     } catch (e) { status = 'error'; error = String(e.message || e); this.stats.errors++; }
