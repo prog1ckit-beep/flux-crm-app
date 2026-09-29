@@ -28,6 +28,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewAssetLoader
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -64,7 +67,16 @@ class MainActivity : AppCompatActivity(), Host {
         settings = Settings(this)
         assets = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         web = WebView(this)
+        web.setBackgroundColor(0xFF111318.toInt())
         setContentView(web)
+        // Android 15 (targetSdk 35) рисует контент под строкой состояния и кнопками — отдаём им место отступами WebView,
+        // иначе полоса CRM налезает на часы и батарею (скрин владельца 29.09).
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(web) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+            v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
         router = CommandRouter(this)
         bridge = FanBridge(this, router)
         setupWebView()

@@ -12,6 +12,7 @@
 </style>
 </head>
 <body>
+<img src="logo.svg" alt="" style="height:72px;width:auto;margin-bottom:12px">
 <h1 id="t"></h1>
 <p id="b"></p>
 <button id="ok"></button>
@@ -19,7 +20,7 @@
 <script>
   (function () {
     var q = new URLSearchParams(location.search);
-    document.getElementById('t').textContent = q.get('title') || 'CRM-Express.md';
+    document.getElementById('t').textContent = q.get('title') || 'Flux CRM';
     document.getElementById('b').textContent = q.get('body') || '';
     var ok = document.getElementById('ok'); ok.textContent = q.get('button') || 'Закрыть';
     var close = function () { window.FanNative.call(JSON.stringify({ id: 'x', cmd: 'alert.close', args: {} })); };

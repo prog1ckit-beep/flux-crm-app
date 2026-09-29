@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">CRM-Express.md</string>
-    <string name="settings_title">CRM-Express.md — настройки</string>
+    <string name="app_name">Flux CRM</string>
+    <string name="settings_title">Flux CRM — настройки</string>
     <string name="server_url_hint">Адрес сервера CRM (https://…)</string>
     <string name="allow_hosts_hint">Дополнительные адреса через запятую</string>
     <string name="scan_qr">Сканировать QR с адресом</string>
     <string name="save_open">Сохранить и открыть CRM</string>
     <string name="offline_title">Сервер CRM недоступен</string>
-    <string name="notif_channel">Уведомления CRM-Express.md</string>
+    <string name="notif_channel">Уведомления Flux CRM</string>
 </resources>

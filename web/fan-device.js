@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.4';
+  var VERSION = '1.0.5';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно
@@ -137,7 +137,7 @@
     var g = this.g, N = g.Notification;
     if (!N) return Promise.reject(new FanDeviceError('unsupported', 'Notification', 'notify.show'));
     var show = function () {
-      var n = new N(args.title || 'CRM-Express.md', { body: args.body || '', tag: args.tag });
+      var n = new N(args.title || 'Flux CRM', { body: args.body || '', tag: args.tag });
       if (args.url) n.onclick = function () { g.location.href = args.url; };
       return {};
     };
@@ -154,7 +154,7 @@
     return new Promise(function (resolve) {
       var box = doc.createElement('div');
       box.setAttribute('style', 'position:fixed;inset:0;z-index:2147483001;background:#111318;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;font:20px/1.4 system-ui,sans-serif');
-      var h = doc.createElement('div'); h.textContent = args.title || 'CRM-Express.md'; h.setAttribute('style', 'font-size:34px;font-weight:700;margin-bottom:16px;color:#ff4fa3');
+      var h = doc.createElement('div'); h.textContent = args.title || 'Flux CRM'; h.setAttribute('style', 'font-size:34px;font-weight:700;margin-bottom:16px;color:#ff4fa3');
       var b = doc.createElement('div'); b.textContent = args.body || ''; b.setAttribute('style', 'max-width:720px;white-space:pre-wrap');
       var btn = doc.createElement('button'); btn.textContent = args.button || 'Закрыть';
       btn.setAttribute('style', 'margin-top:28px;font-size:20px;padding:14px 32px;border:0;border-radius:10px;background:#ff4fa3;color:#fff');

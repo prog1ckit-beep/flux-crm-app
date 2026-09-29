@@ -113,7 +113,7 @@ class CommandRouter {
   }
   notify(a) {
     if (!Notification.isSupported()) throw new CommandError('unsupported', 'Notification');
-    const n = new Notification({ title: String(a.title || 'CRM-Express.md'), body: String(a.body || ''), silent: false });
+    const n = new Notification({ title: String(a.title || 'Flux CRM'), body: String(a.body || ''), silent: false });
     if (a.url) n.on('click', () => this.engine.openUrl(String(a.url)));
     else n.on('click', () => this.engine.show());
     n.show();
@@ -127,7 +127,7 @@ class CommandRouter {
         webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false }
       });
       w.setAlwaysOnTop(true, 'screen-saver');
-      const q = new URLSearchParams({ title: String(a.title || 'CRM-Express.md'), body: String(a.body || ''), button: String(a.button || 'Закрыть'), seconds: String(Number(a.seconds) || 0) });
+      const q = new URLSearchParams({ title: String(a.title || 'Flux CRM'), body: String(a.body || ''), button: String(a.button || 'Закрыть'), seconds: String(Number(a.seconds) || 0) });
       w.loadURL(this.engine.uiUrl('alert.html') + '?' + q.toString());
       w.once('ready-to-show', () => { w.show(); w.focus(); });
       w.on('closed', () => resolve({ closed: 'window' }));
@@ -246,7 +246,7 @@ class Engine {
   }
   createWindow() {
     this.win = new BrowserWindow({
-      width: 1280, height: 800, show: false, backgroundColor: '#111318', title: 'CRM-Express.md',
+      width: 1280, height: 800, show: false, backgroundColor: '#111318', title: 'Flux CRM',
       autoHideMenuBar: true, fullscreen: !!this.settings.data.fullscreen,
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false, spellcheck: false }
     });
@@ -266,7 +266,7 @@ class Engine {
   createTray() {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'ui', 'icon.png'));
     this.tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-    this.tray.setToolTip('CRM-Express.md');
+    this.tray.setToolTip('Flux CRM');
     this.tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Открыть', click: () => this.show() },
       { label: 'Перезагрузить', click: () => this.loadServer() },

@@ -12,7 +12,7 @@ final class SettingsViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "CRM-Express.md — настройки"
+        title = "Flux CRM — настройки"
         view.backgroundColor = UIColor(red: 0.067, green: 0.075, blue: 0.094, alpha: 1)
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: "Сохранить", style: .done, target: self, action: #selector(save))
         let stack = UIStackView(arrangedSubviews: [field(urlField, "Адрес сервера CRM (https://…)", settings.serverUrl),

@@ -113,7 +113,7 @@ struct NotifyCommand: Command {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { ok, _ in
             guard ok else { return done(.failure(CommandError(.denied, "уведомления запрещены"))) }
             let c = UNMutableNotificationContent()
-            c.title = a["title"] as? String ?? "CRM-Express.md"
+            c.title = a["title"] as? String ?? "Flux CRM"
             c.body = a["body"] as? String ?? ""
             c.sound = .default
             if let url = a["url"] as? String { c.userInfo["url"] = url }

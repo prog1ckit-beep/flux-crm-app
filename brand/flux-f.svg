@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 120" width="100" height="120">
+  <!-- FLUX CRM — знак «F» (неон, розовый). Один файл на всё: цвет через currentColor, свечение — filter. -->
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff3fb4"/>
+      <stop offset="1" stop-color="#c04dff"/>
+    </linearGradient>
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <g fill="none" stroke="url(#g)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)">
+    <!-- контур F с «листом» вместо средней перекладины -->
+    <path d="M30 14 H84 Q88 14 88 18 V26 Q88 30 84 30 H43 V56 Q52 48 66 48 H71 Q75 48 75 52 V55 Q75 60 66 62 Q52 65 43 72 V106 H30 Z"/>
+    <!-- внутренняя трубка стойки -->
+    <path d="M36.5 30 V106"/>
+  </g>
+</svg>
