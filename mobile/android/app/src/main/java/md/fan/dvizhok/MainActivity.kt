@@ -68,15 +68,17 @@ class MainActivity : AppCompatActivity(), Host {
         assets = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this)).build()
         web = WebView(this)
         web.setBackgroundColor(0xFF111318.toInt())
-        setContentView(web)
-        // Android 15 (targetSdk 35) рисует контент под строкой состояния и кнопками — отдаём им место отступами WebView,
-        // иначе полоса CRM налезает на часы и батарею (скрин владельца 29.09).
+        // Android 15 (targetSdk 35) рисует контент под строкой состояния и кнопками. WebView свой padding игнорирует,
+        // поэтому отступы под системные панели получает контейнер (скрин владельца 29.09: полоса CRM налезала на часы).
+        val root = android.widget.FrameLayout(this).apply { setBackgroundColor(0xFF111318.toInt()); addView(web) }
+        setContentView(root)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        ViewCompat.setOnApplyWindowInsetsListener(web) { v, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout() or WindowInsetsCompat.Type.ime())
             v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
+            WindowInsetsCompat.CONSUMED
         }
+        ViewCompat.requestApplyInsets(root)
         router = CommandRouter(this)
         bridge = FanBridge(this, router)
         setupWebView()

@@ -1,6 +1,6 @@
 {
-  "name": "fan-dvizhok-desktop",
-  "version": "1.0.8",
+  "name": "flux-crm",
+  "version": "1.0.9",
   "private": true,
   "description": "Flux CRM",
   "main": "main.js",
