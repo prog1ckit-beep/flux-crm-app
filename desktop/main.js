@@ -318,11 +318,22 @@ class PrintPoint {
   stop() { if (this.timer) clearInterval(this.timer); this.timer = null; }
   /** Запрос к CRM с cookie сессии приложения (человек вошёл в CRM в этом же окне). */
   async api(method, params) {
-    const url = this.engine.settings.serverUrl + '/api/method/' + method;
-    const res = await enet.fetch(url, { method: 'POST', useSessionCookies: true, headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' }, body: JSON.stringify(params || {}) });
+    let res = await this.post(method, params);
+    // Сессия, открытая в окне CRM, несёт CSRF-токен: POST без него Frappe отклоняет (400 CSRFTokenError) — берём токен и повторяем
+    if (res.status === 400 || res.status === 403) { this.csrf = await this.token(); res = await this.post(method, params); }
     const j = await res.json().catch(() => ({}));
-    if (!res.ok || j.message === undefined) throw new Error('HTTP ' + res.status + ' ' + (j.exception || '').slice(0, 120));
+    if (!res.ok || j.message === undefined) throw new Error('HTTP ' + res.status + ' ' + (j.exc_type || j.exception || '').slice(0, 120));
     return j.message;
+  }
+  post(method, params) {
+    const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (this.csrf) headers['X-Frappe-CSRF-Token'] = this.csrf;
+    return enet.fetch(this.engine.settings.serverUrl + '/api/method/' + method, { method: 'POST', useSessionCookies: true, headers, body: JSON.stringify(params || {}) });
+  }
+  async token() {
+    const res = await enet.fetch(this.engine.settings.serverUrl + '/api/method/crm_dvizhok.api.csrf', { useSessionCookies: true, headers: { 'Accept': 'application/json' } });
+    const j = await res.json().catch(() => ({}));
+    return String(j.message || '');
   }
   async tick() {
     if (this.busy || !this.enabled || !this.engine.settings.serverUrl) return;
