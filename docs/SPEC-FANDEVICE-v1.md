@@ -77,6 +77,7 @@ web/fan-device.js  — ОДИН файл, вживляется движком в
 | `app.haptic` | `{kind?:"light"|"medium"|"heavy"|"success"|"error"}` | `{}` | ✓ | ✓ | unsupported |
 | `app.badge` | `{count}` | `{}` | unsupported | ✓ | ✓ (taskbar) |
 | `app.open` | `{url}` — открыть адрес во внешнем браузере/приложении | `{}` | ✓ | ✓ | ✓ |
+| `app.window` | `{url?}` — открыть адрес CRM (по умолчанию заставка `/crm#welcome`) в ОТДЕЛЬНОМ окне приложения; чужие адреса — `denied` | `{windows:<сколько окон CRM открыто>}` | unsupported | unsupported | ✓ |
 | `app.update` | `{manifest}` — адрес JSON `{android:{version,url},windows:{…},ios:{…}}` (CRM: `/api/method/crm_dvizhok.api.releases`) | `{updating:bool, version, current, url?, manual?}` — если новее: Android скачивает APK и открывает установщик; Windows скачивает EXE, запускает его и закрывается; iOS — `manual:true` + url | ✓ | manual | ✓ |
 | `point.enable` | `{on}` — точка печати: опрос заданий CRM (`crm_dvizhok.api.point_poll` каждые 3 с под cookie сессии) + автозапуск при входе | `{enabled, deviceId, printed, errors, lastPoll, lastError}` | unsupported | unsupported | ✓ |
 | `point.status` | — | то же | unsupported | unsupported | ✓ |

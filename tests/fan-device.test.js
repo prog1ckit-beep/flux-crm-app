@@ -144,3 +144,17 @@ test('файл идемпотентен: повторный require не соз�
   require('../web/fan-device.js');
   assert.equal(globalThis.FanDevice, first);
 });
+
+test('app.window: отдельное окно приложения — только где движок его умеет (Windows); иначе unsupported и has() = false', async () => {
+  const fake = new FakeNative({ features: ['info', 'app.window'] });
+  fake.answer = req => req.cmd === 'app.window' ? { id: req.id, ok: true, result: { windows: 2 } } : FakeNative.prototype.answer.call(fake, req);
+  const win = makeDevice(fake);
+  await win.ready;
+  assert.equal(win.has('app.window'), true);
+  assert.deepEqual(await win.app.window('/crm#fan=fan-cameras'), { windows: 2 });
+  assert.equal(fake.requests.find(r => r.cmd === 'app.window').args.url, '/crm#fan=fan-cameras');
+  const phone = makeDevice(new FakeNative());
+  await phone.ready;
+  assert.equal(phone.has('app.window'), false);
+  await assert.rejects(phone.app.window(), e => e.code === 'unsupported');
+});

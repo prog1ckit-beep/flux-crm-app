@@ -5,7 +5,7 @@
  */
 (function (global) {
   'use strict';
-  var VERSION = '1.0.15';
+  var VERSION = '1.0.16';
 
   if (global.FanDevice && global.FanDevice.version === VERSION && global.FanDevice._isTop === (global.top === global)) {
     return; // уже вживлён в это окно
@@ -324,6 +324,7 @@
       haptic: function (kind) { return self.call('app.haptic', { kind: kind || 'light' }); },
       badge: function (count) { return self.call('app.badge', { count: count | 0 }); },
       open: function (url) { return self.call('app.open', { url: String(url) }); },
+      window: function (url) { return self.call('app.window', { url: url ? String(url) : '' }); },
       update: function (a) { return self.call('app.update', a || {}); }
     };
     this.print = {

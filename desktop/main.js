@@ -115,7 +115,8 @@ class CommandRouter {
       'settings.get': () => ({ serverUrl: engine.settings.serverUrl }),
       'settings.open': () => { engine.openSettings(); return {}; },
       'settings.save': (a, ctx) => this.settingsSave(a, ctx),
-      'app.reload': (a, ctx) => { engine.loadServer(); return {}; },
+      'app.reload': (a, ctx) => { engine.reload(ctx.win); return {}; },
+      'app.window': a => engine.openWindow(a.url),
       'alert.close': (a, ctx) => { if (ctx.internal && engine.alertWin && !engine.alertWin.isDestroyed()) engine.alertWin.close(); return {}; },
       'notify.show': a => this.notify(a),
       'notify.alert': a => this.alert(a),
@@ -416,6 +417,7 @@ class Engine {
     this.perms = new Permissions(this);
     this.shim = fs.readFileSync(this.shimPath(), 'utf8');
     this.win = null; this.tray = null; this.settingsWin = null;
+    this.extra = [];   // отдельные окна CRM (app.window): камеры на втором мониторе, два раздела рядом
     this.selftest = process.argv.includes('--selftest');
     this.quitting = false;
   }
@@ -432,33 +434,66 @@ class Engine {
     ipcMain.on('fan:scan', (event, data) => { if (this.settings.isAllowedUrl(event.senderFrame.url)) this.deliver({ event: 'scan', data }); });
     this.createWindow();
     if (!this.selftest) this.createTray();
+    // Правый клик по значку на панели задач Windows → «Новое окно» (запуск с --new-window приходит в second-instance)
+    if (!this.selftest && app.isPackaged && process.platform === 'win32') {
+      app.setUserTasks([{ program: process.execPath, arguments: '--new-window', iconPath: process.execPath, iconIndex: 0, title: 'Новое окно', description: 'Ещё одно окно Flux CRM' }]);
+    }
     if (this.selftest) this.runSelftest();
     else if (this.settings.serverUrl) this.loadServer();
     else this.openSettings();
     if (!this.selftest && this.point.enabled) this.point.start();   // точка печати: опрос заданий с запуска (автозапуск при входе)
   }
-  createWindow() {
-    this.win = new BrowserWindow({
-      width: 1280, height: 800, show: false, backgroundColor: '#111318', title: 'Flux CRM',
-      autoHideMenuBar: true, fullscreen: !!this.settings.data.fullscreen,
+  /** Окно с CRM — одна проводка для главного и отдельных окон: UA движка, shim, своя страница «нет связи», внешние ссылки в браузер. */
+  crmWindow(opts) {
+    const win = new BrowserWindow(Object.assign({
+      width: 1280, height: 800, show: false, backgroundColor: '#111318', title: 'Flux CRM', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: false, nodeIntegration: false, spellcheck: false }
-    });
-    const wc = this.win.webContents;
+    }, opts || {}));
+    const wc = win.webContents;
     wc.setUserAgent(wc.getUserAgent() + ' FanDvizhok/' + VERSION);   // сервер видит, что открыт движок
     this.perms.installBluetooth(wc);
-    wc.on('dom-ready', () => this.inject());
-    wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => { if (isMainFrame && code !== -3) this.showOffline(url, desc); });
+    wc.on('dom-ready', () => wc.executeJavaScript(this.shim, true).catch(() => {}));
+    wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => { if (isMainFrame && code !== -3) this.showOffline(win, url, desc); });
     // 502/503 от туннеля или сервера — своя страница с автоповтором вместо страницы Cloudflare
-    wc.on('did-navigate', (e, url, httpCode) => { if (httpCode >= 500 && this.settings.isAllowedUrl(url)) this.showOffline(url, 'HTTP ' + httpCode); });
+    wc.on('did-navigate', (e, url, httpCode) => { if (httpCode >= 500 && this.settings.isAllowedUrl(url)) this.showOffline(win, url, 'HTTP ' + httpCode); });
     // «Открыть в новом окне» (window.open, target=_blank) — ВСЕГДА во внешнем браузере, и для адресов своей CRM
-    // (30.09, владелец: «Экран» в Поваре/«Открыть» в Экранах грузились в окно приложения — табло без шторки, вернуться нельзя)
+    // (30.09, владелец: «Экран» в Поваре/«Открыть» в Экранах грузились в окно приложения — табло без шторки, вернуться нельзя).
+    // Второе окно ПРИЛОЖЕНИЯ открывает только явная команда app.window (кнопка ⧉ в шторке, «Новое окно»).
     wc.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
     wc.on('will-navigate', (e, url) => { if (!this.settings.isAllowedUrl(url) && !url.startsWith('file://')) { e.preventDefault(); shell.openExternal(url); } });
     wc.on('page-title-updated', e => e.preventDefault());
+    return win;
+  }
+  createWindow() {
+    this.win = this.crmWindow({ fullscreen: !!this.settings.data.fullscreen });
     this.win.once('ready-to-show', () => { if (!process.argv.includes('--hidden')) this.win.show(); });
     this.win.on('close', e => { if (!this.quitting && !this.selftest) { e.preventDefault(); this.win.hide(); } });
     this.win.on('show', () => this.deliver({ event: 'resume', data: {} }));
     this.win.on('hide', () => this.deliver({ event: 'pause', data: {} }));
+  }
+  /** Отдельное окно приложения с адресом CRM (по умолчанию заставка). Закрывается по-настоящему; главное окно живёт в трее. */
+  openWindow(url) {
+    const base = this.settings.serverUrl;
+    if (!base) throw new CommandError('failed', 'адрес CRM не задан');
+    let target;
+    try { target = new URL(String(url || '/crm#welcome'), base + '/').href; } catch (e) { throw new CommandError('bad_args', 'url'); }
+    if (!this.settings.isAllowedUrl(target)) throw new CommandError('denied', 'в отдельном окне открываются только адреса CRM');
+    const win = this.crmWindow({ title: 'Flux CRM · окно ' + (this.extra.length + 2) });
+    if (this.win && !this.win.isDestroyed() && this.win.isVisible()) {   // каскадом от главного, чтобы не легло ровно поверх
+      const [x, y] = this.win.getPosition(), step = 36 * (this.extra.length + 1);
+      win.setPosition(x + step, y + step);
+    }
+    win.fanTarget = target;
+    this.extra.push(win);
+    win.on('closed', () => { this.extra = this.extra.filter(w => w !== win); });
+    win.once('ready-to-show', () => win.show());
+    win.loadURL(target);
+    return { windows: this.extra.length + 1 };
+  }
+  /** «Повторить» на странице «нет связи»: отдельное окно возвращается к своему адресу, главное — к заставке CRM. */
+  reload(win) {
+    if (win && win !== this.win && this.extra.includes(win)) win.loadURL(win.fanTarget);
+    else this.loadServer();
   }
   createTray() {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'ui', 'icon.png'));
@@ -466,6 +501,7 @@ class Engine {
     this.tray.setToolTip('Flux CRM');
     this.tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'Открыть', click: () => this.show() },
+      { label: 'Новое окно', click: () => { try { this.openWindow(); } catch (e) { this.openSettings(); } } },
       { label: 'Перезагрузить', click: () => this.loadServer() },
       { label: 'Настройки', click: () => this.openSettings() },
       { type: 'separator' },
@@ -474,7 +510,6 @@ class Engine {
     this.tray.on('click', () => this.show());
   }
   show() { if (!this.win) return; this.win.show(); this.win.focus(); }
-  inject() { this.win.webContents.executeJavaScript(this.shim, true).catch(() => {}); }
   loadServer() {
     if (!this.settings.serverUrl) { this.openSettings(); return; }
     this.win.loadURL(this.settings.serverUrl + '/crm#welcome');   // заставка CRM, не список лидов (слово владельца 29.09)
@@ -485,8 +520,8 @@ class Engine {
     this.show();
     this.deliver({ event: 'push.open', data: { url } });
   }
-  showOffline(url, desc) {
-    this.win.loadURL(this.uiUrl('offline.html') + '?url=' + encodeURIComponent(url || '') + '&err=' + encodeURIComponent(desc || ''));
+  showOffline(win, url, desc) {
+    win.loadURL(this.uiUrl('offline.html') + '?url=' + encodeURIComponent(url || '') + '&err=' + encodeURIComponent(desc || ''));
   }
   openSettings() {
     if (this.settingsWin && !this.settingsWin.isDestroyed()) { this.settingsWin.focus(); return; }
@@ -497,16 +532,16 @@ class Engine {
     this.settingsWin.loadURL(this.uiUrl('settings.html'));
     this.settingsWin.webContents.on('dom-ready', () => this.settingsWin.webContents.executeJavaScript(this.shim, true).catch(() => {}));
   }
-  /** Доставка ответов/событий в верхнюю страницу главного окна — единственный путь. */
+  /** Доставка событий в верхние страницы окон CRM (главное + отдельные) — единственный путь. */
   deliver(msg) {
-    if (!this.win || this.win.isDestroyed()) return;
-    this.win.webContents.executeJavaScript('window.FanDevice&&window.FanDevice._deliver(' + JSON.stringify(JSON.stringify(msg)) + ')', true).catch(() => {});
+    const js = 'window.FanDevice&&window.FanDevice._deliver(' + JSON.stringify(JSON.stringify(msg)) + ')';
+    [this.win].concat(this.extra).forEach(w => { if (w && !w.isDestroyed()) w.webContents.executeJavaScript(js, true).catch(() => {}); });
   }
   async onCall(event, json) {
     let req;
     try { req = JSON.parse(json); } catch (e) { return JSON.stringify({ ok: false, error: { code: 'bad_args', message: 'json' } }); }
     const origin = (() => { try { return new URL(event.senderFrame.url).origin; } catch (e) { return null; } })();
-    const ctx = { internal: this.isInternalOrigin(origin), origin };
+    const ctx = { internal: this.isInternalOrigin(origin), origin, win: BrowserWindow.fromWebContents(event.sender) };
     const answer = body => JSON.stringify(Object.assign({ id: req.id }, body));
     if (!ctx.internal && !this.settings.isAllowedOrigin(origin)) return answer({ ok: false, error: { code: 'denied', message: 'чужой origin: ' + origin } });
     try {
@@ -538,7 +573,10 @@ class Engine {
 if (!app.requestSingleInstanceLock()) { app.quit(); }
 else {
   const engine = new Engine();
-  app.on('second-instance', () => engine.show());
+  app.on('second-instance', (e, argv) => {
+    if (!argv.includes('--new-window')) return engine.show();
+    try { engine.openWindow(); } catch (err) { engine.show(); }
+  });
   app.whenReady().then(() => engine.start());
   app.on('window-all-closed', () => { /* живём в трее */ });
   app.on('before-quit', () => { engine.quitting = true; });
