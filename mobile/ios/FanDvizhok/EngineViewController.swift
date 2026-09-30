@@ -120,10 +120,10 @@ final class EngineViewController: UIViewController, WKNavigationDelegate, WKUIDe
         if let u = action.request.url, action.targetFrame?.isMainFrame != false { UIApplication.shared.open(u); return decisionHandler(.cancel) }
         decisionHandler(.allow)
     }
+    // «Открыть в новом окне» (window.open, target=_blank) — ВСЕГДА в Safari, и для адресов своей CRM (30.09, владелец:
+    // «Экран» в Поваре грузился в окно приложения — табло без шторки, вернуться нельзя)
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if let u = action.request.url {
-            if settings.isAllowed(url: u.absoluteString) { _ = webView.load(URLRequest(url: u)) } else { UIApplication.shared.open(u) }
-        }
+        if let u = action.request.url, let s = u.scheme?.lowercased(), s == "http" || s == "https" { UIApplication.shared.open(u) }
         return nil
     }
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { showOffline(error) }

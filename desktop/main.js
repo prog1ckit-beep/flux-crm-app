@@ -439,7 +439,9 @@ class Engine {
     wc.on('did-fail-load', (e, code, desc, url, isMainFrame) => { if (isMainFrame && code !== -3) this.showOffline(url, desc); });
     // 502/503 от туннеля или сервера — своя страница с автоповтором вместо страницы Cloudflare
     wc.on('did-navigate', (e, url, httpCode) => { if (httpCode >= 500 && this.settings.isAllowedUrl(url)) this.showOffline(url, 'HTTP ' + httpCode); });
-    wc.setWindowOpenHandler(({ url }) => { this.settings.isAllowedUrl(url) ? this.win.loadURL(url) : shell.openExternal(url); return { action: 'deny' }; });
+    // «Открыть в новом окне» (window.open, target=_blank) — ВСЕГДА во внешнем браузере, и для адресов своей CRM
+    // (30.09, владелец: «Экран» в Поваре/«Открыть» в Экранах грузились в окно приложения — табло без шторки, вернуться нельзя)
+    wc.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
     wc.on('will-navigate', (e, url) => { if (!this.settings.isAllowedUrl(url) && !url.startsWith('file://')) { e.preventDefault(); shell.openExternal(url); } });
     wc.on('page-title-updated', e => e.preventDefault());
     this.win.once('ready-to-show', () => { if (!process.argv.includes('--hidden')) this.win.show(); });

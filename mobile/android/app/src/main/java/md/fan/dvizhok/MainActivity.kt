@@ -10,6 +10,7 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Message
 import android.util.Base64
 import android.util.Log
 import android.webkit.ConsoleMessage
@@ -97,6 +98,8 @@ class MainActivity : AppCompatActivity(), Host {
             useWideViewPort = true; loadWithOverviewMode = true; setSupportZoom(false)
             userAgentString = "$userAgentString FanDvizhok/${BuildConfig.VERSION_NAME}"
             mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            // новые окна (window.open, target=_blank) не грузим в этот WebView — их ловит onCreateWindow → браузер
+            setSupportMultipleWindows(true); javaScriptCanOpenWindowsAutomatically = true
         }
         CookieManager.getInstance().setAcceptCookie(true)
         CookieManager.getInstance().setAcceptThirdPartyCookies(web, true)
@@ -137,8 +140,28 @@ class MainActivity : AppCompatActivity(), Host {
                 return true
             }
             override fun onConsoleMessage(m: ConsoleMessage): Boolean { Log.d("FanWeb", "${m.message()} @${m.lineNumber()}"); return true }
+            // «Открыть в новом окне» — ВСЕГДА в системном браузере, и для адресов своей CRM (30.09, владелец: «Экран» в
+            // Поваре грузился в приложение — табло без шторки, вернуться нельзя). Адрес нового окна WebView заранее не
+            // говорит, поэтому отдаём ему временный WebView и забираем адрес с первой же навигации.
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                val tmp = WebView(this@MainActivity)
+                var done = false
+                fun take(u: Uri?): Boolean {
+                    if (done || u == null || (u.scheme != "http" && u.scheme != "https")) return false
+                    done = true; openExternal(u); tmp.post { tmp.stopLoading(); tmp.destroy() }; return true
+                }
+                tmp.webViewClient = object : WebViewClient() {
+                    override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest): Boolean { take(r.url); return true }
+                    override fun onPageStarted(v: WebView, url: String, favicon: Bitmap?) { take(Uri.parse(url)) }
+                }
+                (resultMsg.obj as WebView.WebViewTransport).webView = tmp
+                resultMsg.sendToTarget()
+                return true
+            }
         }
     }
+
+    private fun openExternal(u: Uri) { runCatching { startActivity(Intent(Intent.ACTION_VIEW, u).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } }
 
     private fun Settings.isAllowedOrigin(origin: String) = isAllowedUrl(origin.trimEnd('/'))
 
